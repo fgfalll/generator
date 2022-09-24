@@ -124,7 +124,11 @@ try:
     df["Y"] = datetime.datetime.today().strftime("%Y")
     # Date define end
 except KeyError:
-    pass
+    print("Чогось не вистачає в екселі продовжити?")
+    if input("так чи ні?\n") == "ні":
+        exit()
+    else:
+        pass
 
 # Baly to words and define
 if des == "так":
