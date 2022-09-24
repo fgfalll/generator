@@ -61,6 +61,9 @@ elif what_exam == "4":
 elif what_exam == "5":
     pth_doc = exam_dir / "Повідомлення.docx"
     what = "повідомлення"
+else:
+    print("ok")
+    exit()
 word_template = pth_doc
 
 #User imput
@@ -71,7 +74,8 @@ sheet = input("Який лист використати:")
 print('Чи потрібні бали?')
 des = input('Введіть так або ні:\n')
 
-df = pd.read_excel(excel_path, dtype={"Реєстраційни номер":str,"Номер зно":str,"Рік зно":str}, sheet_name = sheet).fillna(value=' ')
+df = pd.read_excel(excel_path, dtype={"Реєстраційни номер":str,"Номер зно":str,"Рік зно":str, "Конкурсний бал":str},
+                   sheet_name = sheet).fillna(value=' ')
 
 # Main for define start
 df["kod1"] = pd.Index(df["Назва групи"])
@@ -117,15 +121,22 @@ df["Y"] = datetime.datetime.today().strftime("%Y")
 if des == "так":
     df["baly_ukr"] = pd.Index(df["ЗНО.Українська мова та література"])
     df["baly_mat"] = pd.Index(df["ЗНО.Математика"])
-    #df["baly_istor"] = pd.Index(df["ЗНО.Історія України"])
+    df["baly_istor"] = pd.Index(df["ЗНО.Історія України"])
     df["sr_bal"] = pd.Index(df["Конкурсний бал"])
+    df["baly_ukr_mov"] = pd.Index(df["ЗНО.Українська мова"])
+    df["baly_geo"] = pd.Index(df["ЗНО.Географія"])
     def f(row):
        return num2words(row["ЗНО.Українська мова та література"])
        return num2words(row["ЗНО.Математика"])
-       #return num2words(row["ЗНО.Історія України"])
+       return num2words(row["ЗНО.Історія України"])
+       return num2words(row["ЗНО.Українська мова"])
+       return num2words(row["ЗНО.Географія"])
        return num2words(row["Конкурсний бал"])
+
     df["baly_ukr_slova"] = df["ЗНО.Українська мова та література"].apply(num2words, lang='uk')
-    df["baly_mat_slova"] = df["ЗНО.Математика"].apply(num2words, lang='uk')
+    df["baly_geo_slova"] = df["ЗНО.Географія"].apply(num2words, lang='uk')
+    #df["baly_ukr_mov_slova"] = df["ЗНО.Українська мова"].apply(num2words, lang='uk')
+    #df["baly_mat_slova"] = df["ЗНО.Математика"].apply(num2words, lang='uk')
     #df["baly_istor_slova"] = df["ЗНО.Історія України"].apply(num2words, lang='uk')
     df["sr_bal_slova"] = df["Конкурсний бал"].apply(num2words, lang='uk')
 else:
