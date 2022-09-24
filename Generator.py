@@ -19,25 +19,21 @@ desktop = pathlib.Path.home() / 'Desktop'
 win = Tk()
 
 win.withdraw()
+win.lift()
+win.attributes("-topmost", True)
 
 def open_file_xls():
-    file = filedialog.askopenfile(mode='r', initialdir=desktop, title="Вибір екселя", filetypes=[('Виберіть ексель', '*.xlsx')])
+    file = filedialog.askopenfile(mode='r', initialdir=desktop, title="Вибір екселя"
+                                  , filetypes=[('Виберіть ексель', '*.xlsx')])
     if file:
         filepath = os.path.abspath(file.name)
         return filepath
-#def open_doc():
-    #file = filedialog.askopenfile(mode='r', title="Вибір прикладу документа", filetypes=[('Виберіть що генерувати', '*.docx')])
-    #if file:
-        #filepath_doc = os.path.abspath(file.name)
-        #return filepath_doc
-
 
 pth_xls = open_file_xls()
-#pth_doc = open_doc()
 win.destroy()
 win.mainloop()
-
 excel_path = pth_xls
+
 #Vybor example
 print("Який документ генерувати (введіть цифру)")
 print("1. Анкета для банку")
@@ -45,6 +41,7 @@ print("2. Аркуш випробувань")
 print("3. Витяг з наказу")
 print("4. Опис справи")
 print("5. Повідомлення")
+print("6. Свій приклад документу")
 what_exam = input("Ваш вибір:")
 if what_exam == "1":
     pth_doc = exam_dir / "Анкета для банку.docx"
@@ -61,6 +58,15 @@ elif what_exam == "4":
 elif what_exam == "5":
     pth_doc = exam_dir / "Повідомлення.docx"
     what = "повідомлення"
+elif what_exam == "6":
+    def open_doc():
+        file = filedialog.askopenfile(mode='r', title="Вибір прикладу документа",
+                                      filetypes=[('Виберіть свій приклад', '*.docx')])
+        if file:
+            filepath_doc = os.path.abspath(file.name)
+            return filepath_doc
+    pth_doc = open_doc()
+    what = input("як назвати документ:")
 else:
     print("ok")
     exit()
@@ -78,44 +84,47 @@ df = pd.read_excel(excel_path, dtype={"Реєстраційни номер":str,
                    sheet_name = sheet).fillna(value=' ')
 
 # Main for define start
-df["kod1"] = pd.Index(df["Назва групи"])
-df["nomer"] = pd.Index(df["Реєстраційни номер"])
-df["name1"] = pd.Index(df["Прізвище"])
-df["name2"] = pd.Index(df["Ім'я"])
-df["name3"] = pd.Index(df["По батькові"])
-df["adresa"] = pd.Index(df["Адреса"])
-df["mob_number"] = pd.Index(df["Контактний номер"])
-df["form_b"] = pd.Index(df["Бютжет чи контракт"])
-df["gr_num"] = pd.Index(df["Номер групи"])
-df["stupen"] = pd.Index(df["Освітній ступінь"])
-df["spc"] = pd.Index(df["Спеціальність"])
-df["num_pass"] = pd.Index(df["ДПО.Номер"])
-df["seria_pass"] = pd.Index(df["ДПО.Серія"])
-df["vydan"] = pd.Index(df["ДПО.Ким виданий"])
-df["nakaz"] = pd.Index(df["Наказ про зарахування"])
-df["ser_sv"] = pd.Index(df["Серія документа"])
-df["num_sv"] = pd.Index(df["Номер документа"])
-df["kym_vydany"] = pd.Index(df["Ким видано"])
-df["zno_num"] = pd.Index(df["Номер зно"])
-df["zno_rik"] = pd.Index(df["Рік зно"])
-df["forma_nav"] = pd.Index(df["Форма навчання"])
-df["doc_of"] = pd.Index(df["ДПО"])
-df["typ_doc"] = pd.Index(df["Тип документа"])
-df["typ_doc_dod"] = pd.Index(df["Додаток до типу документу"])
-df["prot_num"] = pd.Index(df["Номер протоколу"])
-# Main define end
+try:
+    df["kod1"] = pd.Index(df["Назва групи"])
+    df["nomer"] = pd.Index(df["Реєстраційни номер"])
+    df["name1"] = pd.Index(df["Прізвище"])
+    df["name2"] = pd.Index(df["Ім'я"])
+    df["name3"] = pd.Index(df["По батькові"])
+    df["adresa"] = pd.Index(df["Адреса"])
+    df["mob_number"] = pd.Index(df["Контактний номер"])
+    df["form_b"] = pd.Index(df["Бютжет чи контракт"])
+    df["gr_num"] = pd.Index(df["Номер групи"])
+    df["stupen"] = pd.Index(df["Освітній ступінь"])
+    df["spc"] = pd.Index(df["Спеціальність"])
+    df["num_pass"] = pd.Index(df["ДПО.Номер"])
+    df["seria_pass"] = pd.Index(df["ДПО.Серія"])
+    df["vydan"] = pd.Index(df["ДПО.Ким виданий"])
+    df["nakaz"] = pd.Index(df["Наказ про зарахування"])
+    df["ser_sv"] = pd.Index(df["Серія документа"])
+    df["num_sv"] = pd.Index(df["Номер документа"])
+    df["kym_vydany"] = pd.Index(df["Ким видано"])
+    df["zno_num"] = pd.Index(df["Номер зно"])
+    df["zno_rik"] = pd.Index(df["Рік зно"])
+    df["forma_nav"] = pd.Index(df["Форма навчання"])
+    df["doc_of"] = pd.Index(df["ДПО"])
+    df["typ_doc"] = pd.Index(df["Тип документа"])
+    df["typ_doc_dod"] = pd.Index(df["Додаток до типу документу"])
+    df["prot_num"] = pd.Index(df["Номер протоколу"])
+    # Main define end
 
-# Date define
-df["data_sv"] = pd.to_datetime(df["Дата видачі документа"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["data_prot"] = pd.to_datetime(df["Дата протоколу"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["zayava_vid"] = pd.to_datetime(df["Дата подачі заяви"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["data"] = pd.to_datetime(df["ДПО.Дата видачі"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["data_vstup"] = pd.to_datetime(df["Дата вступу"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["data_nakaz"] = pd.to_datetime(df["Дата наказу"], errors='coerce').dt.strftime('%d.%m.%Y')
-df["d"] = datetime.datetime.today().strftime("%d")
-df["m"] = format_datetime(datetime.datetime.today(), "MMMM", locale='uk_UA')
-df["Y"] = datetime.datetime.today().strftime("%Y")
-# Date define end
+    # Date define
+    df["data_sv"] = pd.to_datetime(df["Дата видачі документа"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["data_prot"] = pd.to_datetime(df["Дата протоколу"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["zayava_vid"] = pd.to_datetime(df["Дата подачі заяви"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["data"] = pd.to_datetime(df["ДПО.Дата видачі"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["data_vstup"] = pd.to_datetime(df["Дата вступу"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["data_nakaz"] = pd.to_datetime(df["Дата наказу"], errors='coerce').dt.strftime('%d.%m.%Y')
+    df["d"] = datetime.datetime.today().strftime("%d")
+    df["m"] = format_datetime(datetime.datetime.today(), "MMMM", locale='uk_UA')
+    df["Y"] = datetime.datetime.today().strftime("%Y")
+    # Date define end
+except KeyError:
+    pass
 
 # Baly to words and define
 if des == "так":
