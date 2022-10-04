@@ -80,7 +80,7 @@ sheet = input("Який лист використати:")
 print('Чи потрібні бали?')
 des = input('Введіть так або ні:\n')
 
-df = pd.read_excel(excel_path, dtype={"Реєстраційни номер":str,"Номер зно":str,"Рік зно":str, "Конкурсний бал":str},
+df = pd.read_excel(excel_path, dtype={"Реєстраційни номер":str,"Номер зно":str,"Рік зно":str, "Конкурсний бал":str, "Галузевий коефіцієнт":float},
                    sheet_name = sheet).fillna(value=' ')
 
 # Main for define start
@@ -138,6 +138,9 @@ if des == "так":
     df["sr_bal"] = pd.Index(df["Конкурсний бал"])
     df["baly_ukr_mov"] = pd.Index(df["ЗНО.Українська мова"])
     df["baly_geo"] = pd.Index(df["ЗНО.Географія"])
+    df["reg_kof"] = pd.Index(df["Регіональний коефіцієнт"])
+    df["gal_kof"] = pd.to_numeric(df["Галузевий коефіцієнт"])
+    print(df["gal_kof"])
     def f(row):
        return num2words(row["ЗНО.Українська мова та література"])
        return num2words(row["ЗНО.Математика"])
@@ -145,12 +148,16 @@ if des == "так":
        return num2words(row["ЗНО.Українська мова"])
        return num2words(row["ЗНО.Географія"])
        return num2words(row["Конкурсний бал"])
+       return num2words(row["Регіональний коефіцієнт"])
+       return num2words(row["Галузевий коефіцієнт"])
 
     df["baly_ukr_slova"] = df["ЗНО.Українська мова та література"].apply(num2words, lang='uk')
     df["baly_geo_slova"] = df["ЗНО.Географія"].apply(num2words, lang='uk')
     #df["baly_ukr_mov_slova"] = df["ЗНО.Українська мова"].apply(num2words, lang='uk')
     #df["baly_mat_slova"] = df["ЗНО.Математика"].apply(num2words, lang='uk')
     #df["baly_istor_slova"] = df["ЗНО.Історія України"].apply(num2words, lang='uk')
+    df["reg_kof_slov"] = df["Регіональний коефіцієнт"].apply(num2words, lang='uk')
+    df["gal_kof_slov"] = df["Галузевий коефіцієнт"].apply(num2words, lang='uk')
     df["sr_bal_slova"] = df["Конкурсний бал"].apply(num2words, lang='uk')
 else:
     print('ok')
