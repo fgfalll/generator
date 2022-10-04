@@ -152,9 +152,9 @@ if des == "так":
        return num2words(row["Галузевий коефіцієнт"])
 
     df["baly_ukr_slova"] = df["ЗНО.Українська мова та література"].apply(num2words, lang='uk')
-    df["baly_geo_slova"] = df["ЗНО.Географія"].apply(num2words, lang='uk')
+    #df["baly_geo_slova"] = df["ЗНО.Географія"].apply(num2words, lang='uk')
     #df["baly_ukr_mov_slova"] = df["ЗНО.Українська мова"].apply(num2words, lang='uk')
-    #df["baly_mat_slova"] = df["ЗНО.Математика"].apply(num2words, lang='uk')
+    df["baly_mat_slova"] = df["ЗНО.Математика"].apply(num2words, lang='uk')
     #df["baly_istor_slova"] = df["ЗНО.Історія України"].apply(num2words, lang='uk')
     df["reg_kof_slov"] = df["Регіональний коефіцієнт"].apply(num2words, lang='uk')
     df["gal_kof_slov"] = df["Галузевий коефіцієнт"].apply(num2words, lang='uk')
@@ -162,15 +162,6 @@ if des == "так":
 else:
     print('ok')
     pass
-#df["baly_istor_slova"] = df["ЗНО Історія України"].apply(num2words, lang='uk')
-#df["reg_cof"] = pd.Index(df["Регіональний коефіцієнт"])
-#df["baly_reg_cof_slova"] = num2words(df["reg_cof"],  lang='uk')
-#df["galuz_cof"] = pd.Index(df["Галузевий коефіцієнт"])
-#df["baly_galuz_cof_slova"] = num2words(df["galuz_cof"],  lang='uk')
-#df["sils_cof"] = pd.Index(df["Сільський коефіцієнт"])
-#df["baly_sils_cof_slova"] = num2words(df["sils_cof"],  lang='uk')
-#df["dod_bal"] = pd.Index(df["Додаткові бали за успішне закінчення підготовчих курсів"])
-#df["dod_bal_slova"] = num2words(df["dod_bal"],  lang='uk')
 # Baly to words and define end
 
 #Output
