@@ -669,9 +669,6 @@ class DocumentGeneratorApp(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while processing data: {e}")
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.max_rows', None)
-        print(df)
 
     def create_documents(self, df, output_dir):
         for idx, row in df.iterrows():
