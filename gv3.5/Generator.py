@@ -69,6 +69,9 @@ class ColumnMappingDialog(QDialog):
         self.required_columns = required_columns.copy()  # Copy the required columns
         self.column_mappings = column_mappings if column_mappings else {}
 
+        # Initialize combo_boxes attribute to store references to combo boxes
+        self.combo_boxes = {}
+
         # Main layout
         main_layout = QVBoxLayout()
 
@@ -81,15 +84,14 @@ class ColumnMappingDialog(QDialog):
         # Create form layout for mappings
         form_layout = QFormLayout()
 
-        self.combo_boxes = {}
-        for column in self.df.columns:
-            label = QLabel(column)
+        for required_column in self.required_columns:
+            label = QLabel(required_column)
             combo_box = QComboBox()
             combo_box.addItem("Skip")  # Add Skip option
-            combo_box.addItems(self.required_columns)
-            combo_box.setCurrentText(self.column_mappings.get(column, "Skip"))  # Set current mapping if exists
+            combo_box.addItems(self.df.columns)  # Add columns from the DataFrame
+            combo_box.setCurrentText(self.column_mappings.get(required_column, "Skip"))  # Set current mapping if exists
             form_layout.addRow(label, combo_box)
-            self.combo_boxes[column] = combo_box
+            self.combo_boxes[required_column] = combo_box
 
         scrollLayout.addLayout(form_layout)
         scroll.setWidget(scrollContent)
@@ -116,6 +118,9 @@ class ColumnMappingDialog(QDialog):
         # Automap required columns if present in df
         self.automap_required_columns()
 
+    def get_mapped_columns(self):
+        return self.column_mappings
+
     def automap_required_columns(self):
         for column in self.required_columns:
             if column in self.df.columns:
@@ -125,22 +130,22 @@ class ColumnMappingDialog(QDialog):
 
     def accept(self):
         try:
-            for original_column, combo_box in self.combo_boxes.items():
+            for required_column, combo_box in self.combo_boxes.items():
                 selected_column = combo_box.currentText()
-                if selected_column != "Skip" and selected_column in self.required_columns:
+                if selected_column != "Skip" and selected_column in self.df.columns:
                     # Ensure we don't rename multiple columns to the same new name
-                    if selected_column in self.df.columns and selected_column != original_column:
-                        QMessageBox.warning(self, "Duplicate Mapping", f"The column {selected_column} is already used.")
+                    if selected_column in self.column_mappings.values() and self.column_mappings.get(required_column) != selected_column:
+                        QMessageBox.warning(self, "Duplicate Mapping", f"The column {selected_column} is already mapped.")
                         return
-                    self.column_mappings[original_column] = selected_column
+                    self.column_mappings[required_column] = selected_column
             super(ColumnMappingDialog, self).accept()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while saving mappings: {e}")
 
     def restore_column_mappings(self):
-        for original_column, selected_column in self.column_mappings.items():
-            if original_column in self.combo_boxes and selected_column in self.required_columns:
-                combo_box = self.combo_boxes[original_column]
+        for required_column, selected_column in self.column_mappings.items():
+            if required_column in self.combo_boxes and selected_column in self.df.columns:
+                combo_box = self.combo_boxes[required_column]
                 combo_box.setCurrentText(selected_column)
 
     def update_preview_table(self):
@@ -150,10 +155,10 @@ class ColumnMappingDialog(QDialog):
 
         # Update DataFrame with temporary column names for preview
         preview_df = self.df.copy()
-        for original_column, combo_box in self.combo_boxes.items():
+        for required_column, combo_box in self.combo_boxes.items():
             selected_column = combo_box.currentText()
             if selected_column != "Skip":
-                preview_df.rename(columns={original_column: selected_column}, inplace=True)
+                preview_df.rename(columns={required_column: selected_column}, inplace=True)
 
         self.preview_table.setHorizontalHeaderLabels(preview_df.columns)
 
@@ -355,23 +360,6 @@ class DocumentGeneratorApp(QMainWindow):
                 self.column_mappings = dialog.get_mapped_columns()
                 self.log_message("Column mappings updated.")
 
-                for original_column, combo_box in dialog.combo_boxes.items():
-                    selected_column = combo_box.currentText()
-                    if selected_column == "Skip":
-                        continue
-                    elif selected_column not in df.columns:
-                        available_columns = list(df.columns)
-                        column, ok = QInputDialog.getItem(self, "Map Column",
-                                                          f"The column '{selected_column}' was not found in the DataFrame.\n"
-                                                          "Please select a column to map it to:",
-                                                          available_columns, 0, False)
-                        if ok and column:
-                            self.column_mappings[original_column] = column
-                            combo_box.setCurrentText(column)
-                        else:
-                            QMessageBox.warning(self, "Column Mapping Skipped",
-                                                f"Skipping mapping for column: {original_column}")
-
                 self.update_preview_from_sheet()  # Refresh the preview to show new column names
 
         except Exception as e:
@@ -562,13 +550,12 @@ class DocumentGeneratorApp(QMainWindow):
             self.choose_custom_templates()
 
     def process_data(self, df):
-
         # Apply column mappings
         for required_column, mapped_column in self.column_mappings.items():
             if mapped_column in df.columns:
                 df[required_column] = df[mapped_column]
 
-            # Column mappings as specified
+        # Column mappings as specified
         df["kod1"] = df.get("Назва групи", '')
         df["nomer"] = df.get("Реєстраційни номер", '')
         df["name1"] = df.get("Прізвище", '')
@@ -599,7 +586,31 @@ class DocumentGeneratorApp(QMainWindow):
         try:
             # Define required columns based on include_scores
             required_columns = {
-
+                "kod1": "Назва групи",
+                "nomer": "Реєстраційни номер",
+                "name1": "Прізвище",
+                "name2": "Ім'я",
+                "name3": "По батькові",
+                "adresa": "Адреса",
+                "mob_number": "Контактний номер",
+                "form_b": "Бютжет чи контракт",
+                "gr_num": "Номер групи",
+                "stupen": "Освітній ступінь",
+                "spc": "Спеціальність",
+                "num_pass": "ДПО.Номер",
+                "seria_pass": "ДПО.Серія",
+                "vydan": "ДПО.Ким виданий",
+                "nakaz": "Наказ про зарахування",
+                "ser_sv": "Серія документа",
+                "num_sv": "Номер документа",
+                "kym_vydany": "Ким видано",
+                "zno_num": "Номер зно",
+                "zno_rik": "Рік зно",
+                "forma_nav": "Форма навчання",
+                "doc_of": "ДПО",
+                "typ_doc": "Тип документа",
+                "typ_doc_dod": "Додаток до типу документу",
+                "prot_num": "Номер протоколу",
             }
 
             if self.include_scores:
@@ -607,12 +618,7 @@ class DocumentGeneratorApp(QMainWindow):
                     f"{column.lower().rstrip('.').replace(' ', '_')}": column for column in self.selected_score_columns
                 })
 
-                # Apply column mappings
-            for required_column, mapped_column in self.column_mappings.items():
-                if mapped_column in df.columns:
-                    df[required_column] = df[mapped_column]
-
-                # Process each required column
+            # Process each required column
             for new_column, old_column in required_columns.items():
                 if old_column in df.columns:
                     df[new_column] = df[old_column]
@@ -624,26 +630,26 @@ class DocumentGeneratorApp(QMainWindow):
                     if reply == QMessageBox.Yes:
                         # Provide options to the user to select from available columns
                         available_columns = list(df.columns)
-                        available_columns.append('Skip')
-                        column, ok = QInputDialog.getItem(self, 'Map Column',
-                                                          f"Select a column to map '{old_column}' or Skip",
-                                                          available_columns, editable=False)
-                        if ok and column != 'Skip':
-                            df[new_column] = df[column]
-                        # If user selects 'Skip', do nothing
-                    elif reply == QMessageBox.Cancel:
-                        return df  # Cancel the operation if user chooses to cancel
+                        mapped_column, ok = QInputDialog.getItem(self, "Map Column", f"Map '{old_column}' to:",
+                                                                 available_columns, 0, False)
+                        if ok and mapped_column:
+                            df[new_column] = df[mapped_column]
+                        else:
+                            self.log_message(f"Column '{old_column}' mapping skipped by the user.")
+                    elif reply == QMessageBox.No:
+                        self.log_message(f"Column '{old_column}' skipped.")
+                    else:
+                        self.log_message(f"Process interrupted by the user.")
+                        return
 
-                # Nested function to format date
-
+            # Nested function to format date
             def format_date(column_name):
                 if column_name in df:
                     return pd.to_datetime(df[column_name], errors='coerce').dt.strftime('%d.%m.%Y')
                 else:
                     return [''] * len(df)
 
-                # Date formatting
-
+            # Date formatting
             df["data_sv"] = format_date("Дата видачі документа")
             df["data_prot"] = format_date("Дата протоколу")
             df["zayava_vid"] = format_date("Дата подачі заяви")
@@ -653,7 +659,7 @@ class DocumentGeneratorApp(QMainWindow):
 
             # Adding today's date in specific formats
             df["d"] = datetime.today().strftime("%d")
-            df["m"] = format_datetime(datetime.today(), "MMMM", locale='uk_UA')
+            df["m"] = datetime.today().strftime("%B")
             df["Y"] = datetime.today().strftime("%Y")
 
             # Handling score columns if included
@@ -675,12 +681,21 @@ class DocumentGeneratorApp(QMainWindow):
             context = row.to_dict()
             context = {key.lower().replace(' ', '_').replace('.', '').replace(',', ''): value for key, value in
                        context.items()}
+
+            # Extract name parts for the file name
+            surname = context.get("прізвище", "")
+            name = context.get("ім'я", "")
+            patronymic = context.get("по_батькові", "")
+
+            # Construct the file name
+            file_name = f"{surname} {name} {patronymic}.docx"
+
             for template_path in self.word_templates:
                 try:
                     template_name = pathlib.Path(template_path).stem
                     doc = DocxTemplate(template_path)
                     doc.render(context)
-                    doc.save(f"{output_dir}/{template_name}_{context.get('реєстраційний_номер', idx)}.docx")
+                    doc.save(f"{output_dir}/{template_name}_{file_name}")
                 except Exception as e:
                     self.log_message(f"Error rendering document for row {idx} with template {template_path}: {e}")
                     self.log_message(f"Error in create_documents: {e}")
