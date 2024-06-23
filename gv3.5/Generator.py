@@ -14,13 +14,14 @@ import pandas as pd
 import pathlib
 from transliterate import translit
 
+#Вікно вибору оцінок
 class ScoreColumnSelectorDialog(QDialog):
     def __init__(self, excel_path, selected_sheet, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Виберіть поля з оцінками")
         self.selected_columns = []
 
-        # Read Excel file into a DataFrame
+        # Читати ексель для додати колонки з числами
         try:
             df = pd.read_excel(excel_path, sheet_name=selected_sheet)
             numeric_columns = df.select_dtypes(include=['int', 'float']).columns.tolist()
@@ -44,10 +45,12 @@ class ScoreColumnSelectorDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Під час читання файлу Excel сталася помилка: {e}")
 
+    #Прийняти
     def accept(self):
         self.selected_columns = [item.text() for item in self.list_widget.selectedItems()]
         super().accept()
 
+    #Для транслітерації
     def get_transliterated_columns(self):
         try:
             transliterated_columns = {}
@@ -59,11 +62,11 @@ class ScoreColumnSelectorDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Під час транслітерації сталася помилка: {e}")
             return {}
 
-
+#Вікно співставлення колонок
 class ColumnMappingDialog(QDialog):
     def __init__(self, df, required_columns, column_mappings=None, parent=None):
         super(ColumnMappingDialog, self).__init__(parent)
-        self.setWindowTitle("Map Columns")
+        self.setWindowTitle("Співставлення колонок")
         self.setGeometry(100, 100, 1500, 600)
         self.df = df.copy()  # Make a copy of the DataFrame to avoid modifying the original
         self.required_columns = required_columns.copy()  # Copy the required columns
@@ -87,9 +90,9 @@ class ColumnMappingDialog(QDialog):
         for required_column in self.required_columns:
             label = QLabel(required_column)
             combo_box = QComboBox()
-            combo_box.addItem("Skip")  # Add Skip option
-            combo_box.addItems(self.df.columns)  # Add columns from the DataFrame
-            combo_box.setCurrentText(self.column_mappings.get(required_column, "Skip"))  # Set current mapping if exists
+            combo_box.addItem("Пропустити")
+            combo_box.addItems(self.df.columns)  #Додати з датафрейму
+            combo_box.setCurrentText(self.column_mappings.get(required_column, "Пропустити"))  #Примінити автоспівставлення
             form_layout.addRow(label, combo_box)
             self.combo_boxes[required_column] = combo_box
 
@@ -97,15 +100,15 @@ class ColumnMappingDialog(QDialog):
         scroll.setWidget(scrollContent)
         main_layout.addWidget(scroll)
 
-        # Excel preview table
+        #Попередній перегляд ексель
         self.preview_table = QTableWidget(self)
         self.update_preview_table()
         main_layout.addWidget(self.preview_table)
 
-        # OK and Cancel buttons
+        #Підтвердити та Відмінити кнопки
         buttons_layout = QHBoxLayout()
-        ok_button = QPushButton("OK")
-        cancel_button = QPushButton("Cancel")
+        ok_button = QPushButton("Підтвердити")
+        cancel_button = QPushButton("Відмінити")
         buttons_layout.addWidget(ok_button)
         buttons_layout.addWidget(cancel_button)
         main_layout.addLayout(buttons_layout)
@@ -115,12 +118,13 @@ class ColumnMappingDialog(QDialog):
 
         self.setLayout(main_layout)
 
-        # Automap required columns if present in df
+        #Якщо в датафрейм то колонки автоспівставлення
         self.automap_required_columns()
 
     def get_mapped_columns(self):
         return self.column_mappings
 
+    #Автоспівставлення
     def automap_required_columns(self):
         for column in self.required_columns:
             if column in self.df.columns:
@@ -132,32 +136,32 @@ class ColumnMappingDialog(QDialog):
         try:
             for required_column, combo_box in self.combo_boxes.items():
                 selected_column = combo_box.currentText()
-                if selected_column != "Skip" and selected_column in self.df.columns:
+                if selected_column != "Пропустити" and selected_column in self.df.columns:
                     # Ensure we don't rename multiple columns to the same new name
                     if selected_column in self.column_mappings.values() and self.column_mappings.get(required_column) != selected_column:
-                        QMessageBox.warning(self, "Duplicate Mapping", f"The column {selected_column} is already mapped.")
+                        QMessageBox.warning(self, "Дублювання колонок", f"Колонка {selected_column} вже має призначення.")
                         return
                     self.column_mappings[required_column] = selected_column
             super(ColumnMappingDialog, self).accept()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred while saving mappings: {e}")
+            QMessageBox.critical(self, "Error", f"Помилка співставлення: {e}")
 
+    #Щоб зберіглись колонки в ColumnMappingDialog
     def restore_column_mappings(self):
         for required_column, selected_column in self.column_mappings.items():
             if required_column in self.combo_boxes and selected_column in self.df.columns:
                 combo_box = self.combo_boxes[required_column]
                 combo_box.setCurrentText(selected_column)
 
+    #Оновлення превю там же
     def update_preview_table(self):
         self.preview_table.clear()
         self.preview_table.setRowCount(self.df.shape[0])
         self.preview_table.setColumnCount(self.df.shape[1])
-
-        # Update DataFrame with temporary column names for preview
         preview_df = self.df.copy()
         for required_column, combo_box in self.combo_boxes.items():
             selected_column = combo_box.currentText()
-            if selected_column != "Skip":
+            if selected_column != "Пропустити":
                 preview_df.rename(columns={required_column: selected_column}, inplace=True)
 
         self.preview_table.setHorizontalHeaderLabels(preview_df.columns)
@@ -167,10 +171,11 @@ class ColumnMappingDialog(QDialog):
                 item = QTableWidgetItem(str(preview_df.iloc[i, j]))
                 self.preview_table.setItem(i, j, item)
 
+#Основне вікно
 class DocumentGeneratorApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Generator V3")
+        self.setWindowTitle("Generator V3.5")
         self.setGeometry(100, 100, 700, 600)
 
         self.excel_path = None
@@ -185,6 +190,7 @@ class DocumentGeneratorApp(QMainWindow):
 
         self.setup_gui()
 
+    #Налаштування ГУІ
     def setup_gui(self):
         central_widget = QWidget()
         central_widget.setAcceptDrops(True)
@@ -218,19 +224,19 @@ class DocumentGeneratorApp(QMainWindow):
 
         self.template_listbox = QListWidget(self)
         self.template_listbox.setSelectionMode(QListWidget.MultiSelection)
-        self.template_listbox.setMaximumHeight(150)  # Set maximum height
+        self.template_listbox.setMaximumHeight(150)  #Максимальна висота
 
-        # Dynamically populate template_listbox from example_dir
+        #Перевіряти папку example_dir на наявність документів для заповнення
         self.populate_template_list()
 
         layout.addWidget(self.template_listbox)
 
         buttons_layout = QHBoxLayout()
-        self.choose_custom_templates_button = QPushButton("Choose Custom Templates", self)
+        self.choose_custom_templates_button = QPushButton("Виберіть свій приклад документа", self)
         self.choose_custom_templates_button.clicked.connect(self.choose_custom_templates)
         buttons_layout.addWidget(self.choose_custom_templates_button)
 
-        self.unselect_all_button = QPushButton("Unselect All Templates", self)
+        self.unselect_all_button = QPushButton("Зняти виділення шаблонів", self)
         self.unselect_all_button.clicked.connect(self.unselect_all_templates)
         buttons_layout.addWidget(self.unselect_all_button)
 
@@ -253,19 +259,18 @@ class DocumentGeneratorApp(QMainWindow):
         self.log_window.setReadOnly(True)
         layout.addWidget(self.log_window)
 
+    #Логіка для заповнення списку шаблонів
     def populate_template_list(self):
-        # Clear existing items
+        #Попередньо очистити
         self.template_listbox.clear()
 
-        # Fetch templates from example_dir and add them to template_listbox
+        #Получить шаблони з example_dir та додати в template_listbox
         try:
             example_dir = pathlib.Path(__file__).resolve().parents[0] / "Приклади"
             standard_templates = [file.stem for file in example_dir.glob("*.docx") if file.is_file()]
-
-            # Add standard templates to the list
             self.template_listbox.addItems(standard_templates)
 
-            # Add custom templates to the list
+            # Додати свої шаблони та перемістити
             for template in self.word_templates:
                 template_name = pathlib.Path(template).stem
                 if template_name not in standard_templates:
@@ -274,9 +279,11 @@ class DocumentGeneratorApp(QMainWindow):
         except Exception as e:
             self.log_message(f"Error fetching templates: {e}")
 
+    #Для консолі
     def log_message(self, message):
         self.log_window.append(message)
 
+    #Вибір екселя
     def select_excel_file(self):
         try:
             file, _ = QFileDialog.getOpenFileName(self, "Вибір Excel файлу", str(pathlib.Path.home() / 'Desktop'),
@@ -285,7 +292,7 @@ class DocumentGeneratorApp(QMainWindow):
                 self.excel_path = file
                 self.log_message(f"Вибраний Excel файл: {self.excel_path}")
                 if not self.check_expected_sheets():
-                    self.excel_path = None  # Reset excel_path if expected sheets are not found
+                    self.excel_path = None
                     return
                 self.show_excel_preview()
                 self.update_sheet_dropdown()
@@ -295,29 +302,32 @@ class DocumentGeneratorApp(QMainWindow):
             else:
                 QMessageBox.critical(self, "Error", f"Під час читання файлу Excel сталася помилка: {e}")
 
+    #Перевірити листи
     def check_expected_sheets(self):
         try:
-            # Fetch sheet names from the selected Excel file
+            #Получить листи
             self.expected_sheets = pd.ExcelFile(self.excel_path).sheet_names
             return True
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Під час читання файлу Excel сталася помилка: {e}")
             return False
 
+    #Оновити вибадаючий список з листами
     def update_sheet_dropdown(self):
         if self.excel_path:
             try:
                 self.sheet_dropdown.clear()
                 self.sheet_dropdown.addItems(self.expected_sheets)
-                self.sheet_dropdown.setCurrentIndex(0)  # Set to the first available sheet
-                self.update_preview_from_sheet()  # Update preview for the initial sheet
+                self.sheet_dropdown.setCurrentIndex(0)  #Вибрати перший лист
+                self.update_preview_from_sheet()  #Оновлювати превю відповідно до листа
             except Exception as e:
                     QMessageBox.critical(self, "Error", f"Під час читання файлу Excel сталася помилка: {e}")
 
     def show_excel_preview(self):
-        # This method is no longer directly needed for preview since update_preview_from_sheet handles it
+        # Нетреба але треба без нього не працює
         pass
 
+    #Оновлення превю
     def update_preview_from_sheet(self):
         selected_sheet = self.sheet_dropdown.currentText()
         if selected_sheet != "Виберіть лист":
@@ -358,14 +368,15 @@ class DocumentGeneratorApp(QMainWindow):
             dialog = ColumnMappingDialog(df, required_columns, self.column_mappings, self)
             if dialog.exec_():
                 self.column_mappings = dialog.get_mapped_columns()
-                self.log_message("Column mappings updated.")
+                self.log_message("Колонки оновлені.")
 
-                self.update_preview_from_sheet()  # Refresh the preview to show new column names
+                self.update_preview_from_sheet()  #Показати нові імена в превю
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Під час зіставлення стовпців сталася помилка: {e}")
-            self.log_message(f"Error in map_columns: {e}")
+            self.log_message(f"Проблема map_columns: {e}")
 
+    #Галочка для вибору оцінок
     def toggle_include_scores(self, state):
         self.include_scores = state == Qt.Checked
         self.select_score_columns_button.setEnabled(self.include_scores)
@@ -386,90 +397,82 @@ class DocumentGeneratorApp(QMainWindow):
 
                 formatted_columns = []
                 for col in self.selected_score_columns:
-                    # Strip trailing dots, convert to lower case, replace spaces with underscores, strip again for safety
+                    #Підготовка нових колонок для шаблону
                     formatted_col = col.replace('.',' ').lower().replace(' ', '_').rstrip('_')
                     formatted_columns.append(formatted_col)
 
                 self.selected_score_columns = formatted_columns
 
-                selected_columns_message = f"Selected score columns: {', '.join(self.selected_score_columns)}"
+                selected_columns_message = f"Вибрані колонки з оцінками: {', '.join(self.selected_score_columns)}"
                 self.log_message(selected_columns_message)
 
-                suffix_columns_message = f"Score columns with '_slova' suffix: {', '.join([col + '_slova' for col in self.selected_score_columns])}"
+                suffix_columns_message = f"Колонки з оцінками конвертовані в слова '_slova' суфіксом: {', '.join([col + '_slova' for col in self.selected_score_columns])}"
                 self.log_message(suffix_columns_message)
+                self.log_message('Будьласка перевірьте шаблон на наявність полів для заповнення оцінок відповідно до згенерованих'
+                                 '!! Увага вони повинні бути в {{ }} дужках')
 
         except Exception as e:
             self.log_message(f"Спочатку виберіть файл Excel і аркуш: {e}")
-            self.log_message(f"Error in select_score_columns: {e}")
+            self.log_message(f"Проблема з вибраними колонками з оцінками: {e}")
             return
 
+    #Вікно вибору прикладу
     def choose_custom_templates(self):
         try:
-            # Create a QFileDialog instance
             file_dialog = QFileDialog()
-
-            # Set properties of the file dialog
             file_dialog.setFileMode(QFileDialog.ExistingFiles)
             file_dialog.setNameFilter("Word Files (*.docx)")
-            file_dialog.setWindowTitle("Choose Custom Templates")
-
-            # Use native file dialog if available for better integration
+            file_dialog.setWindowTitle("Виберіть приклад")
             file_dialog.setOption(QFileDialog.DontUseNativeDialog, False)
 
-            # Execute the dialog and process the result
             if file_dialog.exec_():
                 custom_templates = file_dialog.selectedFiles()
                 if not custom_templates:
-                    return  # Exit if no files are selected
+                    return  #Вихід якщо нічого не вибрано
 
-                # Log selected templates
-                self.log_message(f"Selected custom templates: {', '.join(custom_templates)}")
+                self.log_message(f"Вибрані приклади: {', '.join(custom_templates)}")
 
-                # Define example_dir where standard templates are stored
+                #Стандартна папка для прикладів
                 example_dir = pathlib.Path(__file__).resolve().parents[0] / "Приклади"
 
-                # Create example_dir if it does not exist
+                #Створити якщо нема
                 example_dir.mkdir(parents=True, exist_ok=True)
 
-                # Copy custom templates to example_dir
+                #Скопіювати вибраний приклад в папку
                 for template in custom_templates:
                     template_path = pathlib.Path(template)
                     if template_path.exists():
                         template_name = template_path.name
                         destination = example_dir / template_name
                         shutil.copyfile(template, destination)
-                        self.log_message(f"Copied template {template_name} to standard templates folder.")
+                        self.log_message(f"Успішно скопійовано {template_name} в папку прикладів.")
                     else:
-                        self.log_message(f"File {template} does not exist or is inaccessible.")
+                        self.log_message(f"Файл {template} не існує або доступ закритий.")
 
-                # Clear existing word_templates before adding custom templates
+                #Почистити
                 self.word_templates.clear()
 
-                # Add copied templates to word_templates
+                #Додати
                 self.word_templates.extend(
                     str(example_dir / pathlib.Path(template).name) for template in custom_templates)
 
-                self.log_message("Custom templates imported successfully.")
+                self.log_message("Приклади імпортовано.")
 
-                # Update the template listbox view
                 self.populate_template_list()
-
             else:
-                # User canceled the file dialog
-                self.log_message("Custom template selection canceled by user.")
+                #Коли відмінено
+                self.log_message("Відмінено користувачем.")
 
         except Exception as e:
-            # Handle exceptions and log error messages
-            self.log_message(f"Error selecting custom templates: {e}")
-            QMessageBox.critical(self, "Error", f"An error occurred while choosing custom templates: {e}")
+            #Обробка проблем
+            self.log_message(f"Проблема з вибраним прикладом: {e}")
+            QMessageBox.critical(self, "Error", f"Проблема з вибраним прикладом: {e}")
 
     def unselect_all_templates(self):
         self.template_listbox.clearSelection()
-        self.word_templates.clear()  # Clear the list of selected word templates
+        self.word_templates.clear()
         self.word_templates = []
-        self.log_message("All templates unselected.")
-
-        # Repopulate template_listbox with standard templates
+        self.log_message("Виділення знято.")
         self.populate_template_list()
 
     def generate_documents(self):
@@ -481,7 +484,7 @@ class DocumentGeneratorApp(QMainWindow):
             selected_items = self.template_listbox.selectedItems()
             if not selected_items:
                 self.log_message("Шаблон не вибрано: виберіть принаймні один шаблон документа.")
-                self.prompt_choose_templates()  # Prompt user to choose templates
+                self.prompt_choose_templates()
                 return
 
             selected_templates = [item.text() for item in selected_items]
@@ -490,7 +493,7 @@ class DocumentGeneratorApp(QMainWindow):
 
             if not self.word_templates:
                 self.log_message("Шаблон не вибрано: виберіть дійсний шаблон документа.")
-                self.prompt_choose_templates()  # Prompt user to choose templates
+                self.prompt_choose_templates()
                 return
 
             selected_sheet = self.sheet_dropdown.currentText()
@@ -500,7 +503,7 @@ class DocumentGeneratorApp(QMainWindow):
                 self.log_message("Не вибрано стовпців оцінок: виберіть стовпці оцінок для включення.")
                 return
 
-            # Additional data processing and document generation
+            #Додаткова логіка
             self.process_data(df)
             self.log_message("Генерація документів...")
             output_dir = QFileDialog.getExistingDirectory(self, "Виберіть папку для збереження документів")
@@ -511,20 +514,17 @@ class DocumentGeneratorApp(QMainWindow):
             self.log_message(f"Помилка під час створення документів: {e}")
             QMessageBox.critical(self, "Помилка", f"Під час створення документів сталася помилка: {e}")
 
+    #Логіка перевірки прикладів
     def check_standard_templates(self):
         try:
-            # Fetch standard templates from the example directory
             example_dir = pathlib.Path(__file__).resolve().parents[0] / "Приклади"
             standard_templates_path = example_dir.glob("*.docx")
             available_templates = [str(template_path) for template_path in standard_templates_path if
                                    template_path.is_file()]
 
             if available_templates:
-                # Clear existing selections
                 self.template_listbox.clear()
                 self.word_templates.clear()
-
-                # Add standard templates to template_listbox and word_templates
                 for template_path in available_templates:
                     template_name = os.path.splitext(os.path.basename(template_path))[0]
                     self.template_listbox.addItem(template_name)
@@ -550,12 +550,12 @@ class DocumentGeneratorApp(QMainWindow):
             self.choose_custom_templates()
 
     def process_data(self, df):
-        # Apply column mappings
+        #Примінити співставлення
         for required_column, mapped_column in self.column_mappings.items():
             if mapped_column in df.columns:
                 df[required_column] = df[mapped_column]
 
-        # Column mappings as specified
+        #Як повинно бути
         df["kod1"] = df.get("Назва групи", '')
         df["nomer"] = df.get("Реєстраційни номер", '')
         df["name1"] = df.get("Прізвище", '')
@@ -582,9 +582,9 @@ class DocumentGeneratorApp(QMainWindow):
         df["typ_doc_dod"] = df.get("Додаток до типу документу", '')
         df["prot_num"] = df.get("Номер протоколу", '')
 
-        # Process each required column
+        #Обробка стовбців
         try:
-            # Define required columns based on include_scores
+            #Хрень від ChatGPT для include_scores вроді запрацювало співставлення
             required_columns = {
                 "kod1": "Назва групи",
                 "nomer": "Реєстраційни номер",
@@ -618,38 +618,34 @@ class DocumentGeneratorApp(QMainWindow):
                     f"{column.lower().rstrip('.').replace(' ', '_')}": column for column in self.selected_score_columns
                 })
 
-            # Process each required column
+            #Обробка нових колонок
             for new_column, old_column in required_columns.items():
                 if old_column in df.columns:
                     df[new_column] = df[old_column]
                 else:
-                    # Ask user whether to map or skip the missing column
-                    reply = QMessageBox.question(self, 'Missing Column',
-                                                 f"Column '{old_column}' not found in DataFrame. Do you want to map it to another column or skip it?",
+                    #Вікно додавання чи пропуск нових колонок
+                    reply = QMessageBox.question(self, 'Не знайдена колонка',
+                                                 f"Колонка '{old_column}' не назначена. Хочете вибрати відповідну їй чи пропустити?",
                                                  QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
                     if reply == QMessageBox.Yes:
                         # Provide options to the user to select from available columns
                         available_columns = list(df.columns)
-                        mapped_column, ok = QInputDialog.getItem(self, "Map Column", f"Map '{old_column}' to:",
+                        mapped_column, ok = QInputDialog.getItem(self, "Співставлення", f"Співставлення '{old_column}' до:",
                                                                  available_columns, 0, False)
                         if ok and mapped_column:
                             df[new_column] = df[mapped_column]
-                        else:
-                            self.log_message(f"Column '{old_column}' mapping skipped by the user.")
                     elif reply == QMessageBox.No:
-                        self.log_message(f"Column '{old_column}' skipped.")
+                        self.log_message(f"Колонка '{old_column}' пропущена.")
                     else:
-                        self.log_message(f"Process interrupted by the user.")
+                        self.log_message(f"Процесс перерваний.")
                         return
 
-            # Nested function to format date
+            #Форматування дат
             def format_date(column_name):
                 if column_name in df:
                     return pd.to_datetime(df[column_name], errors='coerce').dt.strftime('%d.%m.%Y')
                 else:
                     return [''] * len(df)
-
-            # Date formatting
             df["data_sv"] = format_date("Дата видачі документа")
             df["data_prot"] = format_date("Дата протоколу")
             df["zayava_vid"] = format_date("Дата подачі заяви")
@@ -657,12 +653,12 @@ class DocumentGeneratorApp(QMainWindow):
             df["data_vstup"] = format_date("Дата вступу")
             df["data_nakaz"] = format_date("Дата наказу")
 
-            # Adding today's date in specific formats
+            #Сьогоднішня дата
             df["d"] = datetime.today().strftime("%d")
-            df["m"] = datetime.today().strftime("%B")
+            df["m"] = format_datetime(datetime.datetime.today(), "MMMM", locale='uk_UA')
             df["Y"] = datetime.today().strftime("%Y")
 
-            # Handling score columns if included
+            #Логіка оцінок
             if self.include_scores:
                 for column in self.selected_score_columns:
                     if column in df.columns:
@@ -671,24 +667,25 @@ class DocumentGeneratorApp(QMainWindow):
                             lambda x: num2words(x, lang='uk') if pd.notnull(x) and isinstance(x, (int, float)) else ''
                         )
                     else:
-                        QMessageBox.warning(self, "Warning", f"Column '{column}' not found in DataFrame.")
+                        QMessageBox.warning(self, "Warning", f"Колонка '{column}' не знайдена.")
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred while processing data: {e}")
+            QMessageBox.critical(self, "Error", f"Помилка при обробці даних: {e}")
 
+    #Стройка документа
     def create_documents(self, df, output_dir):
         for idx, row in df.iterrows():
             context = row.to_dict()
             context = {key.lower().replace(' ', '_').replace('.', '').replace(',', ''): value for key, value in
                        context.items()}
 
-            # Extract name parts for the file name
-            surname = context.get("прізвище", "")
-            name = context.get("ім'я", "")
-            patronymic = context.get("по_батькові", "")
+            #Для назви документа
+            name1 = context.get("прізвище", "")
+            name2 = context.get("ім'я", "")
+            name3 = context.get("по_батькові", "")
 
             # Construct the file name
-            file_name = f"{surname} {name} {patronymic}.docx"
+            file_name = f"{name1} {name2} {name3}.docx"
 
             for template_path in self.word_templates:
                 try:
@@ -697,8 +694,8 @@ class DocumentGeneratorApp(QMainWindow):
                     doc.render(context)
                     doc.save(f"{output_dir}/{template_name}_{file_name}")
                 except Exception as e:
-                    self.log_message(f"Error rendering document for row {idx} with template {template_path}: {e}")
-                    self.log_message(f"Error in create_documents: {e}")
+                    self.log_message(f"Проблема генерації {idx} з прикладом {template_path}: {e}")
+                    self.log_message(f"Генерація не успішна: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
