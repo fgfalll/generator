@@ -137,7 +137,6 @@ class ColumnMappingDialog(QDialog):
             for required_column, combo_box in self.combo_boxes.items():
                 selected_column = combo_box.currentText()
                 if selected_column != "Пропустити" and selected_column in self.df.columns:
-                    # Ensure we don't rename multiple columns to the same new name
                     if selected_column in self.column_mappings.values() and self.column_mappings.get(required_column) != selected_column:
                         QMessageBox.warning(self, "Дублювання колонок", f"Колонка {selected_column} вже має призначення.")
                         return
@@ -175,6 +174,14 @@ class ColumnMappingDialog(QDialog):
 class DocumentGeneratorApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.sheet_dropdown = QComboBox(self)
+        self.preview_table = QTableWidget(self)
+        self.template_listbox = QListWidget(self)
+        self.choose_custom_templates_button = QPushButton("Виберіть свій приклад документа", self)
+        self.unselect_all_button = QPushButton("Зняти виділення шаблонів", self)
+        self.include_scores_checkbox = QCheckBox("Додати бали", self)
+        self.select_score_columns_button = QPushButton("Вибір стовпців балів", self)
+        self.log_window = QTextEdit()
         self.setWindowTitle("Generator V3.5")
         self.setGeometry(100, 100, 700, 600)
 
@@ -204,7 +211,6 @@ class DocumentGeneratorApp(QMainWindow):
 
         sheet_label = QLabel("Виберіть лист", self)
         layout.addWidget(sheet_label)
-        self.sheet_dropdown = QComboBox(self)
         self.sheet_dropdown.addItem("Виберіть лист")
         self.sheet_dropdown.currentIndexChanged.connect(self.update_preview_from_sheet)
         layout.addWidget(self.sheet_dropdown)
@@ -212,7 +218,6 @@ class DocumentGeneratorApp(QMainWindow):
         preview_label = QLabel("Попередній перегляд вибраного файлу Excel:", self)
         layout.addWidget(preview_label)
 
-        self.preview_table = QTableWidget(self)
         layout.addWidget(self.preview_table)
 
         map_columns_button = QPushButton("Співставлення колонок", self)
@@ -222,7 +227,6 @@ class DocumentGeneratorApp(QMainWindow):
         template_label = QLabel("Виберіть Шаблони документів", self)
         layout.addWidget(template_label)
 
-        self.template_listbox = QListWidget(self)
         self.template_listbox.setSelectionMode(QListWidget.MultiSelection)
         self.template_listbox.setMaximumHeight(150)  #Максимальна висота
 
@@ -232,21 +236,17 @@ class DocumentGeneratorApp(QMainWindow):
         layout.addWidget(self.template_listbox)
 
         buttons_layout = QHBoxLayout()
-        self.choose_custom_templates_button = QPushButton("Виберіть свій приклад документа", self)
         self.choose_custom_templates_button.clicked.connect(self.choose_custom_templates)
         buttons_layout.addWidget(self.choose_custom_templates_button)
 
-        self.unselect_all_button = QPushButton("Зняти виділення шаблонів", self)
         self.unselect_all_button.clicked.connect(self.unselect_all_templates)
         buttons_layout.addWidget(self.unselect_all_button)
 
         layout.addLayout(buttons_layout)
 
-        self.include_scores_checkbox = QCheckBox("Додати бали", self)
         self.include_scores_checkbox.stateChanged.connect(self.toggle_include_scores)
         layout.addWidget(self.include_scores_checkbox)
 
-        self.select_score_columns_button = QPushButton("Вибір стовпців балів", self)
         self.select_score_columns_button.setEnabled(False)
         self.select_score_columns_button.clicked.connect(self.select_score_columns)
         layout.addWidget(self.select_score_columns_button)
@@ -255,7 +255,6 @@ class DocumentGeneratorApp(QMainWindow):
         generate_button.clicked.connect(self.generate_documents)
         layout.addWidget(generate_button)
 
-        self.log_window = QTextEdit()
         self.log_window.setReadOnly(True)
         layout.addWidget(self.log_window)
 
@@ -628,7 +627,7 @@ class DocumentGeneratorApp(QMainWindow):
                                                  f"Колонка '{old_column}' не назначена. Хочете вибрати відповідну їй чи пропустити?",
                                                  QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
                     if reply == QMessageBox.Yes:
-                        # Provide options to the user to select from available columns
+                        #Опції для співставлення
                         available_columns = list(df.columns)
                         mapped_column, ok = QInputDialog.getItem(self, "Співставлення", f"Співставлення '{old_column}' до:",
                                                                  available_columns, 0, False)
@@ -655,7 +654,7 @@ class DocumentGeneratorApp(QMainWindow):
 
             #Сьогоднішня дата
             df["d"] = datetime.today().strftime("%d")
-            df["m"] = format_datetime(datetime.datetime.today(), "MMMM", locale='uk_UA')
+            df["m"] = format_datetime(datetime.today(), "MMMM", locale='uk_UA')
             df["Y"] = datetime.today().strftime("%Y")
 
             #Логіка оцінок
