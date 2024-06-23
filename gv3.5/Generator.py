@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHB
 from PyQt5.QtCore import Qt
 from docxtpl import DocxTemplate
 from num2words import num2words
-from babel.dates import format_datetime
+from babel.dates import format_date, format_datetime
 from datetime import datetime
 import pandas as pd
 import pathlib
@@ -108,7 +108,7 @@ class ColumnMappingDialog(QDialog):
         #Підтвердити та Відмінити кнопки
         buttons_layout = QHBoxLayout()
         ok_button = QPushButton("Підтвердити")
-        cancel_button = QPushButton("Відмінити")
+        cancel_button = QPushButton("Скасувати")
         buttons_layout.addWidget(ok_button)
         buttons_layout.addWidget(cancel_button)
         main_layout.addLayout(buttons_layout)
@@ -460,7 +460,7 @@ class DocumentGeneratorApp(QMainWindow):
                 self.populate_template_list()
             else:
                 #Коли відмінено
-                self.log_message("Відмінено користувачем.")
+                self.log_message("Скасовано користувачем.")
 
         except Exception as e:
             #Обробка проблем
@@ -622,22 +622,37 @@ class DocumentGeneratorApp(QMainWindow):
                 if old_column in df.columns:
                     df[new_column] = df[old_column]
                 else:
-                    #Вікно додавання чи пропуск нових колонок
-                    reply = QMessageBox.question(self, 'Не знайдена колонка',
-                                                 f"Колонка '{old_column}' не назначена. Хочете вибрати відповідну їй чи пропустити?",
-                                                 QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
-                    if reply == QMessageBox.Yes:
-                        #Опції для співставлення
-                        available_columns = list(df.columns)
-                        mapped_column, ok = QInputDialog.getItem(self, "Співставлення", f"Співставлення '{old_column}' до:",
-                                                                 available_columns, 0, False)
-                        if ok and mapped_column:
-                            df[new_column] = df[mapped_column]
-                    elif reply == QMessageBox.No:
-                        self.log_message(f"Колонка '{old_column}' пропущена.")
-                    else:
-                        self.log_message(f"Процесс перерваний.")
+                    skip_warning = QMessageBox.warning(self, "Warning", "Наявні не визначені колонки пропустити?",
+                                                       QMessageBox.Yes | QMessageBox.No)
+
+                    if skip_warning == QMessageBox.Yes:
+                        self.log_message("Наступні невизначені колонки пропущені.")
+                        for new_column, old_column in required_columns.items():
+                            if old_column not in df.columns:
+                                self.log_message(f"Колонка '{old_column}' пропущена.")
                         return
+                    for new_column, old_column in required_columns.items():
+                        if old_column in df.columns:
+                            df[new_column] = df[old_column]
+                        else:
+                            #Питання за колонки
+                            reply = QMessageBox.question(self, 'Колонка не знайдена',
+                                                         f"Колонка '{old_column}' не назначена. Хочете вибрати відповідну їй чи пропустити?",
+                                                         QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+
+                            if reply == QMessageBox.Yes:
+                                #Опції співставлення
+                                available_columns = list(df.columns)
+                                mapped_column, ok = QInputDialog.getItem(self, "Співставлення",
+                                                                         f"Співставлення '{old_column}' до:",
+                                                                         available_columns, 0, False)
+                                if ok and mapped_column:
+                                    df[new_column] = df[mapped_column]
+                            elif reply == QMessageBox.No:
+                                self.log_message(f"Колонка '{old_column}' пропущена.")
+                            elif reply == QMessageBox.Cancel:
+                                self.log_message(f"Процес перерваний.")
+                                return
 
             #Форматування дат
             def format_date(column_name):
@@ -666,7 +681,7 @@ class DocumentGeneratorApp(QMainWindow):
                             lambda x: num2words(x, lang='uk') if pd.notnull(x) and isinstance(x, (int, float)) else ''
                         )
                     else:
-                        QMessageBox.warning(self, "Warning", f"Колонка '{column}' не знайдена.")
+                        self.log_message(f"Колонка '{column}' не знайдена.")
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Помилка при обробці даних: {e}")
