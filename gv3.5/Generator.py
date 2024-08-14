@@ -356,8 +356,8 @@ class DocumentGeneratorApp(QMainWindow):
         try:
             df = pd.read_excel(self.excel_path, sheet_name=selected_sheet)
             required_columns = [
-                "Назва групи", "Реєстраційни номер", "Прізвище", "Ім'я", "По батькові", "Адреса", "Контактний номер",
-                "Бютжет чи контракт", "Номер групи", "Освітній ступінь", "Спеціальність", "ДПО.Номер", "ДПО.Серія",
+                "Назва групи", "Реєстраційний номер", "Прізвище", "Ім'я", "По батькові", "Адреса", "Контактний номер",
+                "Бютжет чи контракт", "Номер групи", "ОКР", "Спеціальність", "ДПО.Номер", "ДПО.Серія",
                 "ДПО.Ким виданий", "Наказ про зарахування", "Серія документа", "Номер документа", "Ким видано",
                 "Номер зно", "Рік зно", "Форма навчання", "ДПО", "Тип документа", "Додаток до типу документу",
                 "Номер протоколу", "Дата видачі документа", "Дата протоколу", "Дата подачі заяви", "ДПО.Дата видачі",
@@ -549,44 +549,48 @@ class DocumentGeneratorApp(QMainWindow):
             self.choose_custom_templates()
 
     def process_data(self, df):
-        #Примінити співставлення
+        # Примінити співставлення
         for required_column, mapped_column in self.column_mappings.items():
             if mapped_column in df.columns:
                 df[required_column] = df[mapped_column]
 
-        #Як повинно бути
-        df["kod1"] = df.get("Назва групи", '')
-        df["nomer"] = df.get("Реєстраційни номер", '')
-        df["name1"] = df.get("Прізвище", '')
-        df["name2"] = df.get("Ім'я", '')
-        df["name3"] = df.get("По батькові", '')
-        df["adresa"] = df.get("Адреса", '')
-        df["mob_number"] = df.get("Контактний номер", '')
-        df["form_b"] = df.get("Бютжет чи контракт", '')
-        df["gr_num"] = df.get("Номер групи", '')
-        df["stupen"] = df.get("Освітній ступінь", '')
-        df["spc"] = df.get("Спеціальність", '')
-        df["num_pass"] = df.get("ДПО.Номер", '')
-        df["seria_pass"] = df.get("ДПО.Серія", '')
-        df["vydan"] = df.get("ДПО.Ким виданий", '')
-        df["nakaz"] = df.get("Наказ про зарахування", '')
-        df["ser_sv"] = df.get("Серія документа", '')
-        df["num_sv"] = df.get("Номер документа", '')
-        df["kym_vydany"] = df.get("Ким видано", '')
-        df["zno_num"] = df.get("Номер зно", '')
-        df["zno_rik"] = df.get("Рік зно", '')
-        df["forma_nav"] = df.get("Форма навчання", '')
-        df["doc_of"] = df.get("ДПО", '')
-        df["typ_doc"] = df.get("Тип документа", '')
-        df["typ_doc_dod"] = df.get("Додаток до типу документу", '')
-        df["prot_num"] = df.get("Номер протоколу", '')
+                # Як повинно бути
+                df["kod1"] = df.get("Назва групи", '')
+                df["nomer"] = df.get("Реєстраційний номер", '').apply(
+                    lambda x: str(int(x)) if isinstance(x, float) and x.is_integer() else str(x))
+                df["prot_num"] = df.get("Номер протоколу", '').apply(
+                    lambda x: str(int(x)) if isinstance(x, float) and x.is_integer() else str(x))
 
-        #Обробка стовбців
+                # Опис залишкових колонок
+                df["name1"] = df.get("Прізвище", '')
+                df["name2"] = df.get("Ім'я", '')
+                df["name3"] = df.get("По батькові", '')
+                df["adresa"] = df.get("Адреса", '')
+                df["mob_number"] = df.get("Контактний номер", '')
+                df["form_b"] = df.get("Бютжет чи контракт", '')
+                df["gr_num"] = df.get("Номер групи", '')
+                df["stupen"] = df.get("ОКР", '')
+                df["spc"] = df.get("Спеціальність", '')
+                df["num_pass"] = df.get("ДПО.Номер", '')
+                df["seria_pass"] = df.get("ДПО.Серія", '')
+                df["vydan"] = df.get("ДПО.Ким виданий", '')
+                df["nakaz"] = df.get("Наказ про зарахування", '')
+                df["ser_sv"] = df.get("Серія документа", '')
+                df["num_sv"] = df.get("Номер документа", '')
+                df["kym_vydany"] = df.get("Ким видано", '')
+                df["zno_num"] = df.get("Номер зно", '')
+                df["zno_rik"] = df.get("Рік зно", '')
+                df["forma_nav"] = df.get("Форма навчання", '')
+                df["doc_of"] = df.get("ДПО", '')
+                df["typ_doc"] = df.get("Тип документа", '')
+                df["typ_doc_dod"] = df.get("Додаток до типу документу", '')
+
+        # Обробка стовбців
         try:
-            #Хрень від ChatGPT для include_scores вроді запрацювало співставлення
+            # Хрень від ChatGPT для include_scores вроді запрацювало співставлення
             required_columns = {
                 "kod1": "Назва групи",
-                "nomer": "Реєстраційни номер",
+                "nomer": "Реєстраційний номер",
                 "name1": "Прізвище",
                 "name2": "Ім'я",
                 "name3": "По батькові",
@@ -594,7 +598,7 @@ class DocumentGeneratorApp(QMainWindow):
                 "mob_number": "Контактний номер",
                 "form_b": "Бютжет чи контракт",
                 "gr_num": "Номер групи",
-                "stupen": "Освітній ступінь",
+                "stupen": "ОКР",
                 "spc": "Спеціальність",
                 "num_pass": "ДПО.Номер",
                 "seria_pass": "ДПО.Серія",
@@ -617,7 +621,26 @@ class DocumentGeneratorApp(QMainWindow):
                     f"{column.lower().rstrip('.').replace(' ', '_')}": column for column in self.selected_score_columns
                 })
 
-            #Обробка нових колонок
+            # Форматування дат
+            def format_date(column_name):
+                if column_name in df:
+                    return pd.to_datetime(df[column_name], errors='coerce').dt.strftime('%d.%m.%Y')
+                else:
+                    return [''] * len(df)
+
+            df["data_sv"] = format_date("Дата видачі документа")
+            df["data_prot"] = format_date("Дата протоколу")
+            df["zayava_vid"] = format_date("Дата подачі заяви")
+            df["data"] = format_date("ДПО.Дата видачі")
+            df["data_vstup"] = format_date("Дата вступу")
+            df["data_nakaz"] = format_date("Дата наказу")
+
+            # Сьогоднішня дата
+            df["d"] = datetime.today().strftime("%d")
+            df["m"] = format_datetime(datetime.today(), "MMMM", locale='uk_UA')
+            df["Y"] = datetime.today().strftime("%Y")
+
+            # Обробка нових колонок
             for new_column, old_column in required_columns.items():
                 if old_column in df.columns:
                     df[new_column] = df[old_column]
@@ -635,13 +658,13 @@ class DocumentGeneratorApp(QMainWindow):
                         if old_column in df.columns:
                             df[new_column] = df[old_column]
                         else:
-                            #Питання за колонки
+                            # Питання за колонки
                             reply = QMessageBox.question(self, 'Колонка не знайдена',
                                                          f"Колонка '{old_column}' не назначена. Хочете вибрати відповідну їй чи пропустити?",
                                                          QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
                             if reply == QMessageBox.Yes:
-                                #Опції співставлення
+                                # Опції співставлення
                                 available_columns = list(df.columns)
                                 mapped_column, ok = QInputDialog.getItem(self, "Співставлення",
                                                                          f"Співставлення '{old_column}' до:",
@@ -654,25 +677,7 @@ class DocumentGeneratorApp(QMainWindow):
                                 self.log_message(f"Процес перерваний.")
                                 return
 
-            #Форматування дат
-            def format_date(column_name):
-                if column_name in df:
-                    return pd.to_datetime(df[column_name], errors='coerce').dt.strftime('%d.%m.%Y')
-                else:
-                    return [''] * len(df)
-            df["data_sv"] = format_date("Дата видачі документа")
-            df["data_prot"] = format_date("Дата протоколу")
-            df["zayava_vid"] = format_date("Дата подачі заяви")
-            df["data"] = format_date("ДПО.Дата видачі")
-            df["data_vstup"] = format_date("Дата вступу")
-            df["data_nakaz"] = format_date("Дата наказу")
-
-            #Сьогоднішня дата
-            df["d"] = datetime.today().strftime("%d")
-            df["m"] = format_datetime(datetime.today(), "MMMM", locale='uk_UA')
-            df["Y"] = datetime.today().strftime("%Y")
-
-            #Логіка оцінок
+            # Логіка оцінок
             if self.include_scores:
                 for column in self.selected_score_columns:
                     if column in df.columns:
