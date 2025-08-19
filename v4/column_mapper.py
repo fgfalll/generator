@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
                              QTableWidget, QTableWidgetItem, QMessageBox, QScrollArea, QFormLayout, QWidget,
-                             QGroupBox, QGridLayout, QLineEdit, QInputDialog, QFileDialog)
+                             QGroupBox, QGridLayout, QLineEdit, QInputDialog, QFileDialog, QCheckBox)
 import pandas as pd
 
 class PreviewWindow(QDialog):
@@ -59,6 +59,7 @@ class PreviewWindow(QDialog):
             if name in self.main_dialog.df.columns:
                 QMessageBox.warning(self, "Помилка", f"Колонка '{name}' вже існує."); return
             self.main_dialog.df[name] = ''
+            self.main_dialog._invalidate_undo_state() # Invalidate undo on data change
             self.refresh_table()
             self.main_dialog._update_all_combos()
 
@@ -71,6 +72,7 @@ class PreviewWindow(QDialog):
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             self.main_dialog.df.drop(columns=[column_name], inplace=True)
+            self.main_dialog._invalidate_undo_state() # Invalidate undo on data change
             self.refresh_table()
             self.main_dialog._update_all_combos()
 
@@ -84,7 +86,6 @@ class PreviewWindow(QDialog):
                 QMessageBox.critical(self, "Помилка збереження", f"Не вдалося зберегти файл: {e}")
 
 class ColumnMappingDialog(QDialog):
-    # --- KEY FEATURE: Define the ideal column structure ---
     IDEAL_COLUMN_ORDER = [
         "Тип пропозиції", "Назва КП", "Освітній ступінь", "Вступ на основі", "Спеціальність", "Форма навчання",
         "Курс", "Структурний підрозділ", "Чи скорочений термін навчання", "Прізвище", "Ім'я", "По батькові",
@@ -102,7 +103,7 @@ class ColumnMappingDialog(QDialog):
     def __init__(self, df, required_columns, column_mappings=None, backend=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Перевірка, очищення та співставлення даних")
-        self.setGeometry(100, 100, 1000, 750)
+        self.setGeometry(100, 100, 1000, 850) # Increased height for new section
         
         self.original_df = df.copy()
         self.df = df.copy()
@@ -113,9 +114,11 @@ class ColumnMappingDialog(QDialog):
         self.filter_widgets = []
         self.preview_window = None
         self.delimiter_map = {", (Кома)": ",", "; (Крапка з комою)": ";", "	 (Табуляція)": "\t", " (Пробіл)": " "}
+        self.pre_split_df = None
 
         main_layout = QVBoxLayout(self)
         
+        # --- Mapping Group ---
         mapping_group = QGroupBox("1. Співставлення колонок")
         mapping_layout = QVBoxLayout(mapping_group)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
@@ -129,10 +132,10 @@ class ColumnMappingDialog(QDialog):
         mapping_layout.addWidget(scroll)
         main_layout.addWidget(mapping_group)
         
+        # --- Cleanup Group ---
         cleanup_group = QGroupBox("2. Очищення та трансформація даних")
         main_cleanup_layout = QVBoxLayout(cleanup_group)
 
-        # --- KEY FEATURE: New group for table structure tools ---
         structure_box = QGroupBox("Структура таблиці")
         structure_layout = QHBoxLayout(structure_box)
         conform_button = QPushButton("Сформувати ідеальну структуру")
@@ -159,11 +162,31 @@ class ColumnMappingDialog(QDialog):
         split_layout.addLayout(delimiter_layout, 0, 3)
         split_layout.addWidget(QLabel("Нові назви:"), 1, 0); self.new_column_names_edit = QLineEdit(); self.new_column_names_edit.setPlaceholderText("Ім'я,По батькові")
         split_layout.addWidget(self.new_column_names_edit, 1, 1, 1, 3)
-        apply_split_button = QPushButton("Розділити"); split_layout.addWidget(apply_split_button, 0, 4, 2, 1)
+        split_buttons_layout = QHBoxLayout()
+        apply_split_button = QPushButton("Розділити")
+        self.revert_split_button = QPushButton("Скасувати розділення"); self.revert_split_button.setVisible(False)
+        split_buttons_layout.addWidget(apply_split_button); split_buttons_layout.addWidget(self.revert_split_button)
+        split_layout.addLayout(split_buttons_layout, 0, 4, 2, 1)
         main_cleanup_layout.addWidget(split_box)
+
+        # --- KEY FEATURE: New group for merging columns ---
+        merge_box = QGroupBox("Об'єднання колонок")
+        merge_layout = QGridLayout(merge_box)
+        self.merge_column_names_edit = QLineEdit(); self.merge_column_names_edit.setPlaceholderText("Прізвище, Ім'я, По батькові")
+        self.new_merged_column_name_edit = QLineEdit(); self.new_merged_column_name_edit.setPlaceholderText("ПІБ")
+        self.merge_delimiter_edit = QLineEdit(); self.merge_delimiter_edit.setPlaceholderText(" (пробіл)")
+        self.delete_original_cols_check = QCheckBox("Видалити вихідні колонки"); self.delete_original_cols_check.setChecked(True)
+        apply_merge_button = QPushButton("Об'єднати")
+        merge_layout.addWidget(QLabel("Колонки для об'єднання:"), 0, 0); merge_layout.addWidget(self.merge_column_names_edit, 0, 1)
+        merge_layout.addWidget(QLabel("Нова назва колонки:"), 1, 0); merge_layout.addWidget(self.new_merged_column_name_edit, 1, 1)
+        merge_layout.addWidget(QLabel("Роздільник:"), 2, 0); merge_layout.addWidget(self.merge_delimiter_edit, 2, 1)
+        merge_layout.addWidget(self.delete_original_cols_check, 3, 1)
+        merge_layout.addWidget(apply_merge_button, 0, 2, 4, 1)
+        main_cleanup_layout.addWidget(merge_box)
         
         main_layout.addWidget(cleanup_group)
 
+        # --- Preview and Main Buttons ---
         preview_group = QGroupBox("3. Попередній перегляд")
         preview_layout = QHBoxLayout(preview_group)
         self.preview_button = QPushButton("Попередній перегляд та редагування")
@@ -177,47 +200,41 @@ class ColumnMappingDialog(QDialog):
         buttons_layout.addStretch(); buttons_layout.addWidget(ok_button); buttons_layout.addWidget(cancel_button)
         main_layout.addLayout(buttons_layout)
         
+        # --- Connections ---
         ok_button.clicked.connect(self.accept); cancel_button.clicked.connect(self.reject)
         reset_button.clicked.connect(self._reset_data); test_button.clicked.connect(self._generate_test_file)
         apply_split_button.clicked.connect(self._split_column)
+        apply_merge_button.clicked.connect(self._merge_columns) # Connect new button
+        self.revert_split_button.clicked.connect(self._revert_split)
         add_filter_button.clicked.connect(self._add_filter_row)
         apply_filters_button.clicked.connect(self._apply_all_filters)
         self.preview_button.clicked.connect(self._open_preview_window)
         self.delimiter_combo.currentTextChanged.connect(self._on_delimiter_changed)
-        conform_button.clicked.connect(self._conform_to_ideal_structure) # Connect new button
+        conform_button.clicked.connect(self._conform_to_ideal_structure)
         
         self._add_filter_row(is_deletable=False)
         self._update_all_widgets()
         self._automap_columns()
+
+    def _invalidate_undo_state(self):
+        self.pre_split_df = None
+        self.revert_split_button.setVisible(False)
         
     def _conform_to_ideal_structure(self):
-        """Rebuilds the DataFrame to match the IDEAL_COLUMN_ORDER."""
         reply = QMessageBox.question(self, "Сформувати ідеальну структуру?",
                                      "Ця дія додасть відсутні ідеальні колонки, видалить усі зайві та змінить порядок існуючих.\n\n"
                                      "Дані в зайвих колонках буде втрачено. Цю дію не можна скасувати.\n\n"
                                      "Продовжити?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
-        if reply == QMessageBox.StandardButton.No:
-            return
-
-        current_df = self.df
-        # Create a new DataFrame that will only contain columns from the ideal list
-        new_df = pd.DataFrame(index=current_df.index)
-
+        if reply == QMessageBox.StandardButton.No: return
+        self._invalidate_undo_state()
+        new_df = pd.DataFrame(index=self.df.index)
         for col_name in self.IDEAL_COLUMN_ORDER:
-            if col_name in current_df.columns:
-                # If the ideal column exists in the current data, copy it over
-                new_df[col_name] = current_df[col_name]
-            else:
-                # If it doesn't exist, create it as an empty column
-                new_df[col_name] = ""
-        
+            new_df[col_name] = self.df[col_name] if col_name in self.df.columns else ""
         self.df = new_df
         self._update_all_widgets()
-        self._automap_columns() # Try to remap columns after restructuring
+        self._automap_columns()
         QMessageBox.information(self, "Успіх", "Структуру таблиці було приведено до ідеального формату.")
-
 
     def _on_delimiter_changed(self, text):
         self.custom_delimiter_edit.setVisible(text == "Інший...")
@@ -235,7 +252,6 @@ class ColumnMappingDialog(QDialog):
         col = QComboBox(); cond = QComboBox(); cond.addItems(["містить", "не містить", "дорівнює", "не дорівнює"])
         val = QLineEdit(); val.setPlaceholderText("Значення")
         row.addWidget(col); row.addWidget(cond); row.addWidget(val, 1)
-        
         fw = {"row": fw_widget, "col_combo": col, "cond_combo": cond, "val_edit": val}
         if is_deletable:
             rem_btn = QPushButton("Видалити"); rem_btn.clicked.connect(lambda: self._remove_filter_row(fw))
@@ -247,6 +263,7 @@ class ColumnMappingDialog(QDialog):
         if fw in self.filter_widgets: self.filter_widgets.remove(fw); fw["row"].deleteLater()
 
     def _apply_all_filters(self):
+        self._invalidate_undo_state()
         temp_df = self.df.copy()
         for fw in self.filter_widgets:
             col, val = fw["col_combo"].currentText(), fw["val_edit"].text()
@@ -296,6 +313,7 @@ class ColumnMappingDialog(QDialog):
         reply = QMessageBox.question(self, "Скинути всі зміни", "Відновити дані до стану на момент відкриття вікна?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
+            self._invalidate_undo_state()
             self.df = self.original_df.copy()
             for fw in self.filter_widgets: fw["row"].deleteLater()
             self.filter_widgets.clear()
@@ -307,17 +325,72 @@ class ColumnMappingDialog(QDialog):
         col_split = self.split_column_combo.currentText(); delim_txt = self.delimiter_combo.currentText()
         names_str = self.new_column_names_edit.text()
         delim = self.custom_delimiter_edit.text() if delim_txt == "Інший..." else self.delimiter_map.get(delim_txt)
-        if not all([col_split, delim, names_str]):
+        if not all([col_split, delim is not None, names_str]):
             QMessageBox.warning(self, "Недостатньо даних", "Заповніть усі поля для розділення."); return
         names = [n.strip() for n in names_str.split(',') if n.strip()]
         if not names: QMessageBox.warning(self, "Недостатньо даних", "Вкажіть назви нових колонок."); return
+        for name in names:
+            if name in self.df.columns and name != col_split:
+                QMessageBox.warning(self, "Конфлікт імен", f"Колонка з назвою '{name}' вже існує."); return
         try:
+            self.pre_split_df = self.df.copy()
+            original_col_index = self.df.columns.get_loc(col_split)
             split_data = self.df[col_split].astype(str).str.split(delim, n=len(names) - 1, expand=True)
-            for i, name in enumerate(names):
-                self.df[name] = split_data[i].fillna('') if i < split_data.shape[1] else ''
+            self.df.drop(columns=[col_split], inplace=True)
+            for i, name in reversed(list(enumerate(names))):
+                column_data = split_data[i].fillna('') if i < split_data.shape[1] else [''] * len(self.df)
+                self.df.insert(original_col_index, name, column_data)
             self._update_all_widgets()
-            QMessageBox.information(self, "Успіх", f"Колонку '{col_split}' розділено.")
-        except Exception as e: QMessageBox.critical(self, "Помилка", f"Сталася помилка: {e}")
+            self.revert_split_button.setVisible(True)
+            QMessageBox.information(self, "Успіх", f"Колонку '{col_split}' було видалено та замінено новими.")
+        except Exception as e:
+            QMessageBox.critical(self, "Помилка", f"Сталася помилка під час розділення: {e}"); self.pre_split_df = None
+
+    def _revert_split(self):
+        if self.pre_split_df is not None:
+            self.df = self.pre_split_df.copy()
+            self._invalidate_undo_state()
+            self._update_all_widgets()
+            QMessageBox.information(self, "Скасовано", "Операцію розділення колонки було скасовано.")
+        else:
+            QMessageBox.warning(self, "Неможливо скасувати", "Немає операції розділення для скасування.")
+            
+    def _merge_columns(self):
+        cols_str = self.merge_column_names_edit.text()
+        new_col_name = self.new_merged_column_name_edit.text().strip()
+        delimiter = self.merge_delimiter_edit.text()
+        
+        if not all([cols_str, new_col_name]):
+            QMessageBox.warning(self, "Недостатньо даних", "Вкажіть колонки для об'єднання та назву нової колонки."); return
+        
+        cols_to_merge = [c.strip() for c in cols_str.split(',') if c.strip()]
+        if len(cols_to_merge) < 2:
+            QMessageBox.warning(self, "Помилка", "Для об'єднання потрібно щонайменше дві колонки."); return
+        
+        for col in cols_to_merge:
+            if col not in self.df.columns:
+                QMessageBox.warning(self, "Помилка", f"Колонку '{col}' не знайдено в таблиці."); return
+        
+        if new_col_name in self.df.columns and new_col_name not in cols_to_merge:
+            QMessageBox.warning(self, "Конфлікт імен", f"Колонка з назвою '{new_col_name}' вже існує."); return
+        
+        try:
+            self._invalidate_undo_state() # Any merge invalidates the split-undo
+            
+            # Combine columns
+            self.df[new_col_name] = self.df[cols_to_merge].astype(str).agg(delimiter.join, axis=1)
+
+            # Delete original columns if requested
+            if self.delete_original_cols_check.isChecked():
+                cols_to_drop = [c for c in cols_to_merge if c != new_col_name]
+                if cols_to_drop:
+                    self.df.drop(columns=cols_to_drop, inplace=True)
+
+            self._update_all_widgets()
+            QMessageBox.information(self, "Успіх", f"Колонки було успішно об'єднано в '{new_col_name}'.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Помилка", f"Сталася помилка під час об'єднання: {e}")
 
     def _generate_test_file(self):
         if not self.backend: QMessageBox.critical(self, "Помилка", "Зв'язок з додатком втрачено."); return
