@@ -42,7 +42,7 @@
 
 1.  **Клонуйте репозиторій:**
     ```bash
-    git clone https://your-repository-link.git
+    git clone https://github.com/fgfalll/generator/tree/main/v4
     cd document-generator
     ```
 
