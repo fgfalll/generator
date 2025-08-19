@@ -1,7 +1,3 @@
-Звісно, ось професійно оформлений `Readme.md` файл для вашого проєкту, що описує нову версію v4.0 та її ключові переваги над попередньою версією v3.5.
-
----
-
 # Генератор Документів v4.0
 
 ![Версія](https://img.shields.io/badge/version-4.0-blue.svg)![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)![Framework](https://img.shields.io/badge/framework-PyQt6-green.svg)![Ліцензія](https://img.shields.io/badge/license-MIT-lightgrey.svg)
