@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLa
                              QListWidget, QComboBox, QTableWidget, QTableWidgetItem, QCheckBox,
                              QFileDialog, QDialog, QDialogButtonBox, QTextEdit,
                              QGroupBox, QTabWidget, QAbstractItemView, QHeaderView)
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from datetime import datetime
 import qtawesome as qta
@@ -95,6 +96,20 @@ class MainWindow(QMainWindow):
         self.configure_scores_button.setEnabled(loaded and is_scores_checked)
 
     def _setup_ui(self):
+        # --- Create Menu Bar ---
+        menu_bar = self.menuBar()
+        
+        # File Menu
+        file_menu = menu_bar.addMenu("Файл")
+        exit_action = QAction("Вихід", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Settings Menu
+        settings_menu = menu_bar.addMenu("Налаштування")
+        self.color_scheme_action = QAction("Кольорова схема...", self)
+        settings_menu.addAction(self.color_scheme_action)
+
         central_widget = QWidget()
         central_widget.setObjectName("MainContentWidget")
         self.setCentralWidget(central_widget)
@@ -102,13 +117,6 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(central_widget)
         root_layout.setContentsMargins(8, 8, 8, 8)
         root_layout.setSpacing(8)
-
-        top_bar = QHBoxLayout()
-        top_bar.addStretch()
-        self.settings_button = QPushButton(qta.icon('fa5s.cog'), "")
-        self.settings_button.setObjectName("SettingsButton")
-        top_bar.addWidget(self.settings_button)
-        root_layout.addLayout(top_bar)
 
         main_panels_layout = QHBoxLayout()
         root_layout.addLayout(main_panels_layout)
@@ -183,7 +191,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.log_window, qta.icon('fa5s.terminal'), "Консоль")
         right_layout.addWidget(self.tabs)
         
-        self.settings_button.clicked.connect(self.open_settings_signal.emit)
+        self.color_scheme_action.triggered.connect(self.open_settings_signal.emit)
         self.select_excel_button.clicked.connect(self.select_excel_file_signal.emit)
         self.sheet_dropdown.currentTextChanged.connect(self.sheet_changed_signal.emit)
         self.map_columns_button.clicked.connect(self.map_columns_signal.emit)
@@ -240,26 +248,21 @@ class MainWindow(QMainWindow):
         if not mappings:
             self.configured_scores_table.horizontalHeader().setVisible(False)
             self.configured_scores_table.setRowCount(1)
-            self.configured_scores_table.setColumnCount(1) # Set to 1 to hold the placeholder
+            self.configured_scores_table.setColumnCount(1)
             placeholder = QTableWidgetItem("Не налаштовано жодної колонки.")
             placeholder.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.configured_scores_table.setSpan(0, 0, 1, 3)
             self.configured_scores_table.setItem(0, 0, placeholder)
-            # Restore column count for future updates
             self.configured_scores_table.setColumnCount(3)
             return
 
         self.configured_scores_table.horizontalHeader().setVisible(True)
-        # Ensure column count is correct before populating
         self.configured_scores_table.setColumnCount(3)
         self.configured_scores_table.setRowCount(len(mappings))
         
         for row, m in enumerate(mappings):
-            # The span is 1x1 by default, so explicit calls are not needed.
-            # This is the fix for the console warnings.
             source_item = QTableWidgetItem(m['source'])
             key_item = QTableWidgetItem(m['key'])
-            
             written_key_text = m['written_key'] if m.get('add_written', False) else "---"
             written_key_item = QTableWidgetItem(written_key_text)
             if not m.get('add_written', False):

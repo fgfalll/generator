@@ -2,7 +2,6 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView,
                              QDialogButtonBox, QWidget, QMessageBox)
 from PyQt6.QtCore import Qt
-from transliterate import translit
 
 class ScoreMappingDialog(QDialog):
     """A dedicated dialog for selecting score columns and configuring their template keys."""

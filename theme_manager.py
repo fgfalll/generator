@@ -73,6 +73,28 @@ def generate_qss(theme_name="Strict Dark", custom_colors=None):
             font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: {colors["primary_text"]};
         }}
         QWidget#ColorPickerForm {{ background-color: {colors["content_bg"]}; }}
+        
+        QMenuBar {{
+            background-color: {colors["content_bg"]};
+            color: {colors["primary_text"]};
+        }}
+        QMenuBar::item {{
+            padding: 4px 8px;
+            background-color: transparent;
+        }}
+        QMenuBar::item:selected {{
+            background-color: {colors["darker_bg"]};
+        }}
+        QMenu {{
+            background-color: {colors["content_bg"]};
+            color: {colors["primary_text"]};
+            border: 1px solid {colors["border"]};
+        }}
+        QMenu::item:selected {{
+            background-color: {colors["primary_button"]};
+            color: white;
+        }}
+
         QGroupBox {{
             background-color: {colors["content_bg"]}; border: 1px solid {colors["border"]};
             border-radius: 2px; margin-top: 1ex; padding: 8px;
@@ -100,11 +122,11 @@ def generate_qss(theme_name="Strict Dark", custom_colors=None):
         QPushButton#GenerateButton {{ background-color: {colors["generate_button"]}; padding: 10px; }}
         QPushButton#GenerateButton:hover {{ background-color: {colors["generate_hover"]}; }}
         QPushButton#GenerateButton:pressed {{ background-color: {colors["generate_pressed"]}; }}
-        QPushButton#RefreshButton, QPushButton#SettingsButton {{
+        QPushButton#RefreshButton {{
             background-color: transparent; border: 1px solid {colors["secondary_button"]};
             padding: 4px; min-width: 28px;
         }}
-        QPushButton#RefreshButton:hover, QPushButton#SettingsButton:hover {{
+        QPushButton#RefreshButton:hover {{
              background-color: {colors["content_bg"]}; border-color: {colors["primary_button"]};
         }}
         QPushButton#ChoiceButton {{

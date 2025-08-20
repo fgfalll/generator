@@ -6,12 +6,11 @@ import re
 import json
 import xml.etree.ElementTree as ET
 from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from docxtpl import DocxTemplate
 from num2words import num2words
 from babel.dates import format_datetime
 from datetime import datetime
-from transliterate import translit
 
 from ui import MainWindow
 from column_mapper import ColumnMappingDialog
@@ -290,7 +289,6 @@ class Backend(QObject):
 
     def _process_data(self, source_df):
         df = source_df
-        # RECALCULATE SCORES
         self._add_scores_to_dataframe()
         
         date_keys = [k for k in self.required_columns if "Дата" in k and k in df.columns]
@@ -334,7 +332,6 @@ class Backend(QObject):
     def handle_test_file_generation(self, row_data, current_mappings, template_name):
         try:
             test_df = pd.DataFrame([row_data])
-            # In test generation, we don't have the persistent renaming, so we apply mappings directly
             rename_dict = {v: k for k, v in current_mappings.items()}
             test_df.rename(columns=rename_dict, inplace=True)
 
