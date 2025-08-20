@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
         self.include_scores_checkbox = QCheckBox("Додати бали з таблиці")
         self.configure_scores_button = QPushButton(qta.icon('fa5s.check-square', color='white'), " Налаштувати колонки балів")
         
+        # --- KEY CHANGE: Replaced QListWidget with QTableWidget ---
         self.configured_scores_table = QTableWidget()
         self.configured_scores_table.setColumnCount(3)
         self.configured_scores_table.setHorizontalHeaderLabels(["Колонка", "Ключ (число)", "Ключ (прописом)"])
@@ -165,12 +166,13 @@ class MainWindow(QMainWindow):
         self.configured_scores_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.configured_scores_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.configured_scores_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        # --- End of change ---
         
         self.generate_button = QPushButton(qta.icon('fa5s.cogs', color='white'), " Створити документи"); self.generate_button.setObjectName("GenerateButton")
         
         settings_layout.addWidget(self.include_scores_checkbox)
         settings_layout.addWidget(self.configure_scores_button)
-        settings_layout.addWidget(self.configured_scores_table)
+        settings_layout.addWidget(self.configured_scores_table) # Add the new table
         settings_layout.addStretch()
         settings_layout.addWidget(self.generate_button)
         left_layout.addWidget(self.settings_group)
@@ -240,23 +242,19 @@ class MainWindow(QMainWindow):
         if not mappings:
             self.configured_scores_table.horizontalHeader().setVisible(False)
             self.configured_scores_table.setRowCount(1)
-            self.configured_scores_table.setColumnCount(1) # Set to 1 to hold the placeholder
             placeholder = QTableWidgetItem("Не налаштовано жодної колонки.")
             placeholder.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.configured_scores_table.setSpan(0, 0, 1, 3)
             self.configured_scores_table.setItem(0, 0, placeholder)
-            # Restore column count for future updates
-            self.configured_scores_table.setColumnCount(3)
             return
 
         self.configured_scores_table.horizontalHeader().setVisible(True)
-        # Ensure column count is correct before populating
-        self.configured_scores_table.setColumnCount(3)
         self.configured_scores_table.setRowCount(len(mappings))
-        
         for row, m in enumerate(mappings):
-            # The span is 1x1 by default, so explicit calls are not needed.
-            # This is the fix for the console warnings.
+            self.configured_scores_table.setSpan(row, 0, 1, 1) # Reset spans
+            self.configured_scores_table.setSpan(row, 1, 1, 1)
+            self.configured_scores_table.setSpan(row, 2, 1, 1)
+
             source_item = QTableWidgetItem(m['source'])
             key_item = QTableWidgetItem(m['key'])
             

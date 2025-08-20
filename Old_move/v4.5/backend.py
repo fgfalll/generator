@@ -1,10 +1,6 @@
 import shutil
 import pathlib
 import pandas as pd
-import zipfile
-import re
-import json
-import xml.etree.ElementTree as ET
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from docxtpl import DocxTemplate
@@ -12,6 +8,8 @@ from num2words import num2words
 from babel.dates import format_datetime
 from datetime import datetime
 from transliterate import translit
+import io
+import mammoth
 
 from ui import MainWindow
 from column_mapper import ColumnMappingDialog
@@ -36,11 +34,6 @@ class Backend(QObject):
         self.base_dir = pathlib.Path(__file__).resolve().parent
         self.example_dir = self.base_dir / "Приклади"
         self.example_dir.mkdir(parents=True, exist_ok=True)
-        self.keywords_file = self.base_dir / "keywords.json"
-
-        self.TEMPLATE_KEYWORDS = {}
-        self.required_columns = []
-        self._load_keywords()
 
         self.CATEGORY_KEYWORDS = {
             'Аркуш випробувань': ['випробувань', 'тестовий', 'test'],
@@ -49,13 +42,17 @@ class Backend(QObject):
             'Повідомлення': ['повідомлення', 'лист', 'notification']
         }
         self.DEFAULT_CATEGORY = 'Різне'
+        
+        self.required_columns = [
+            "Назва групи", "Реєстраційний номер", "Прізвище", "Ім'я", "По батькові", "Адреса", "Контактний номер",
+            "Бютжет чи контракт", "Номер групи", "ОКР", "Спеціальність", "ДПО.Номер", "ДПО.Серія",
+            "ДПО.Ким виданий", "Наказ про зарахування", "Серія документа", "Номер документа", "Ким видано",
+            "Номер зно", "Рік зно", "Форма навчання", "ДПО", "Тип документа", "Додаток до типу документу",
+            "Номер протоколу", "Дата видачі документа", "Дата протоколу", "Дата подачі заяви", "ДПО.Дата видачі",
+            "Дата вступу", "Дата наказу"
+        ]
 
-    def _log(self, message, level='INFO'):
-        self.ui.log_message(message, level)
-
-    def _load_keywords(self):
-        """Loads standard keywords from keywords.json or creates it with defaults."""
-        default_keywords = {
+        self.TEMPLATE_KEYWORDS = {
             "Назва групи": "kod1", "Реєстраційний номер": "nomer", "Прізвище": "name1", "Ім'я": "name2",
             "По батькові": "name3", "Адреса": "adresa", "Контактний номер": "mob_number",
             "Бютжет чи контракт": "form_b", "Номер групи": "gr_num", "ОКР": "stupen", "Спеціальність": "spc",
@@ -68,27 +65,12 @@ class Backend(QObject):
             "ДПО.Дата видачі": "data", "Дата вступу": "data_vstup", "Дата наказу": "data_nakaz",
         }
 
-        if not self.keywords_file.exists():
-            self._log(f"Файл '{self.keywords_file.name}' не знайдено. Створюю стандартний файл.", 'INFO')
-            try:
-                with open(self.keywords_file, 'w', encoding='utf-8') as f:
-                    json.dump(default_keywords, f, indent=4, ensure_ascii=False)
-                self.TEMPLATE_KEYWORDS = default_keywords
-            except Exception as e:
-                self._log(f"Не вдалося створити файл ключових слів: {e}. Використовуються вбудовані.", 'ERROR')
-                self.TEMPLATE_KEYWORDS = default_keywords
-        else:
-            self._log(f"Завантаження ключових слів з файлу '{self.keywords_file.name}'.", 'PROCESS')
-            try:
-                with open(self.keywords_file, 'r', encoding='utf-8') as f:
-                    self.TEMPLATE_KEYWORDS = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                self._log(f"Помилка читання файлу ключових слів: {e}. Використовуються вбудовані.", 'ERROR')
-                self.TEMPLATE_KEYWORDS = default_keywords
-        
-        self.required_columns = list(self.TEMPLATE_KEYWORDS.keys())
-        self._log(f"Завантажено {len(self.required_columns)} стандартних ключових слів.", 'INFO')
+    def get_template_keywords(self):
+        """Returns the dictionary mapping human-readable names to template keys."""
+        return self.TEMPLATE_KEYWORDS
 
+    def _log(self, message, level='INFO'):
+        self.ui.log_message(message, level)
 
     def connect_signals(self):
         self.ui.open_settings_signal.connect(self.open_settings)
@@ -200,6 +182,7 @@ class Backend(QObject):
             self.ui.update_preview_table(self.df)
             self._log(f"Завантажено аркуш '{sheet_name}'.", 'INFO')
             self.ui.set_sheet_loaded_state(True)
+            # Reset score mappings when a new sheet is loaded
             self.score_mappings = []
             self.ui.update_configured_scores_display(self.score_mappings)
         except Exception as e:
@@ -222,8 +205,7 @@ class Backend(QObject):
 
     def open_score_mapping_dialog(self):
         if self.df is None or self.df.empty:
-            self._log("Спочатку завантажте дані з Excel.", 'WARNING')
-            return
+            self._log("Спочатку завантажте дані з Excel.", 'WARNING'); return
 
         numeric_df = self.df.apply(pd.to_numeric, errors='coerce')
         numeric_columns = numeric_df.dropna(axis=1, how='all').columns.tolist()
@@ -233,208 +215,87 @@ class Backend(QObject):
             self.score_mappings = dialog.get_score_mappings()
             self.ui.update_configured_scores_display(self.score_mappings)
             self._log("Налаштування колонок з балами оновлено.", 'INFO')
-            
-            self._add_scores_to_dataframe()
-            self.ui.update_preview_table(self.df)
-            self._log("Таблиця даних оновлена новими колонками балів.", "INFO")
-
-    def _add_scores_to_dataframe(self):
-        """Adds or updates columns in the main self.df based on score mappings."""
-        if self.df is None: return
-
-        for score_map in self.score_mappings:
-            source_col = score_map['source']
-            if source_col in self.df.columns:
-                numeric_scores = pd.to_numeric(self.df[source_col], errors='coerce')
-                
-                self.df[score_map['key']] = numeric_scores.fillna('').astype(str)
-                
-                if score_map.get('add_written', False):
-                    self.df[score_map['written_key']] = numeric_scores.apply(
-                        lambda x: num2words(int(x), lang='uk') if pd.notnull(x) and isinstance(x, (int, float)) and x == int(x) else (num2words(x, lang='uk') if pd.notnull(x) else '')
-                    ).astype(str)
-            else:
-                self._log(f"Увага: вихідна колонка для балів '{source_col}' не знайдена.", 'WARNING')
-            
-    def _extract_template_keywords(self, template_path):
-        keywords = set()
-        try:
-            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-            with zipfile.ZipFile(template_path) as docx:
-                xml_content = docx.read('word/document.xml')
-                root = ET.fromstring(xml_content)
-                full_text = "".join(node.text for node in root.findall('.//w:t', ns) if node.text is not None)
-                found = re.findall(r'\{\{(.*?)\}\}', full_text)
-                keywords.update(item.strip() for item in found)
-        except Exception as e:
-            self._log(f"Не вдалося просканувати ключові слова у файлі {template_path.name}: {e}", 'ERROR')
-        return keywords
 
     def generate_documents(self):
         try:
-            if self.df is None or self.df.empty: 
-                QMessageBox.warning(self.ui, "Немає даних", "Будь ласка, завантажте дані з файлу Excel.")
-                return
-
+            if self.df is None or self.df.empty: self._log("Не вибрано файл Excel або аркуш.", 'ERROR'); return
             selected_templates_names = [item.text() for item in self.ui.template_listbox.selectedItems()]
-            if not selected_templates_names: 
-                QMessageBox.warning(self.ui, "Немає шаблонів", "Будь ласка, виберіть хоча б один шаблон.")
-                return
-
-            custom_keyword_mappings = {}
-
-            while True:
-                all_used_keywords = set()
-                for name in selected_templates_names:
-                    path = self.template_paths.get(name)
-                    if path: all_used_keywords.update(self._extract_template_keywords(path))
-                
-                if not all_used_keywords:
-                    QMessageBox.warning(self.ui, "Порожні шаблони", "У вибраних шаблонах не знайдено полів.")
-                    return
-
-                keyword_to_desc = {v: k for k, v in self.TEMPLATE_KEYWORDS.items()}
-                known_standard_keywords = set(self.TEMPLATE_KEYWORDS.values())
-                known_score_keys = {m['key'] for m in self.score_mappings} | {m['written_key'] for m in self.score_mappings if m.get('add_written')}
-                auto_keys = {'d', 'm', 'y'}
-
-                unconfigured_score_keywords = []
-                columns_that_need_mapping = []
-
-                for keyword in sorted(list(all_used_keywords)):
-                    if keyword in auto_keys or keyword in known_score_keys: continue
-                    if keyword in known_standard_keywords:
-                        desc_name = keyword_to_desc[keyword]
-                        if desc_name not in self.column_mappings:
-                            columns_that_need_mapping.append(desc_name)
-                        continue
-
-                    is_potential_score = 'zno_' in keyword or '_baly' in keyword or 'baly_' in keyword
-                    if is_potential_score:
-                        unconfigured_score_keywords.append(keyword)
-                        continue
-                    
-                    if keyword not in custom_keyword_mappings:
-                        columns_that_need_mapping.append(keyword)
-
-                if unconfigured_score_keywords:
-                    msg = "У ваших шаблонах знайдено ключові слова, схожі на бали, але вони не налаштовані:\n\n"
-                    msg += "\n".join(f"- {kw}" for kw in unconfigured_score_keywords)
-                    msg += "\n\nБудь ласка, використайте кнопку **'Налаштувати колонки балів'** у Кроці 3. Генерацію зупинено."
-                    QMessageBox.warning(self.ui, "Неналаштовані бали", msg)
-                    return
-
-                if not columns_that_need_mapping:
-                    self._log("Усі використані ключові слова співставлені.", "INFO")
-                    break
-
-                reply = QMessageBox.question(self.ui, "Потрібно налаштувати поля", 
-                    "Для створення документів потрібно вказати відповідність для наступних полів:\n\n" +
-                    "\n".join(f"- {col}" for col in columns_that_need_mapping[:15]) +
-                    ("\n..." if len(columns_that_need_mapping) > 15 else "") +
-                    "\n\nВідкрити вікно співставлення?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
-
-                if reply == QMessageBox.StandardButton.Cancel: return
-                
-                all_possible_columns_to_map = self.required_columns + sorted([c for c in columns_that_need_mapping if c not in self.required_columns])
-                
-                dialog = ColumnMappingDialog(df=self.df, required_columns=all_possible_columns_to_map,
-                                             column_mappings=self.column_mappings, backend=self, parent=self.ui)
-                
-                if dialog.exec():
-                    all_new_mappings = dialog.get_mapped_columns()
-                    for key, value in all_new_mappings.items():
-                        if key in self.required_columns:
-                            self.column_mappings[key] = value
-                        else:
-                            custom_keyword_mappings[key] = value
-                    self.df = dialog.get_modified_df()
-                    self.ui.update_preview_table(self.df)
-                else: return
+            if not selected_templates_names: self._log("Не вибрано жодного шаблону.", 'ERROR'); return
+            if self.ui.include_scores_checkbox.isChecked() and not self.score_mappings:
+                self._log("Включено оцінки, але не налаштовано відповідні стовпці.", 'ERROR'); return
             
             output_dir = QFileDialog.getExistingDirectory(self.ui, "Виберіть папку для збереження документів")
-            if not output_dir: return
+            if not output_dir: self._log("Генерацію скасовано.", 'WARNING'); return
 
-            processed_df = self._process_data(self.df, self.column_mappings, custom_keyword_mappings)
-            if processed_df is None: return
+            self._log("Обробка даних...", 'PROCESS')
+            processed_df = self._process_data(self.df, self.column_mappings)
+            if processed_df is None: self._log("Генерацію зупинено.", 'ERROR'); return
 
             self._log(f"Створення {len(processed_df) * len(selected_templates_names)} документів...", 'PROCESS')
             self._create_documents(processed_df, selected_templates_names, output_dir)
             self._log(f"Документи успішно створено в {output_dir}", 'INFO')
-            QMessageBox.information(self.ui, "Успіх", f"Генерацію завершено!\nДокументи збережено в папці:\n{output_dir}")
-
         except Exception as e:
             self._log(f"Критична помилка під час створення документів: {e}", 'ERROR')
-            QMessageBox.critical(self.ui, "Помилка", f"Сталася критична помилка: {e}")
+            QMessageBox.critical(self.ui, "Помилка", f"Сталася помилка: {e}")
 
-    def _process_data(self, source_df, main_mappings, custom_mappings=None):
-        if custom_mappings is None: custom_mappings = {}
-        df = pd.DataFrame(index=source_df.index)
-
-        # Process standard mappings
-        for required, original in main_mappings.items():
+    def _process_data(self, source_df, mappings):
+        df = pd.DataFrame()
+        for required, original in mappings.items():
             if original in source_df.columns:
-                template_key = self.TEMPLATE_KEYWORDS.get(required)
-                if template_key: df[template_key] = source_df[original]
+                template_key = self.TEMPLATE_KEYWORDS.get(required, required)
+                df[template_key] = source_df[original]
         
-        # Process custom mappings
-        for keyword, original_col in custom_mappings.items():
-            if original_col in source_df.columns:
-                df[keyword] = source_df[original_col]
-        
-        # --- RECALCULATE SCORES JUST-IN-TIME ---
-        if self.ui.include_scores_checkbox.isChecked():
-            for score_map in self.score_mappings:
-                source_col = score_map['source']
-                if source_col in source_df.columns:
-                    numeric_scores = pd.to_numeric(source_df[source_col], errors='coerce')
-                    df[score_map['key']] = numeric_scores.fillna('')
-                    if score_map.get('add_written', False):
-                        df[score_map['written_key']] = numeric_scores.apply(
-                            lambda x: num2words(int(x), lang='uk') if pd.notnull(x) and isinstance(x, (int, float)) and x == int(x) else (num2words(x, lang='uk') if pd.notnull(x) else '')
-                        )
+        for required in self.required_columns:
+            template_key = self.TEMPLATE_KEYWORDS.get(required, required)
+            if template_key not in df.columns: df[template_key] = ''
         
         def format_date_col(column_key):
-            if column_key not in df.columns: return pd.Series([''] * len(df), index=df.index)
+            if column_key not in df.columns: return pd.Series([''] * len(df))
             return pd.to_datetime(df[column_key], errors='coerce').dt.strftime('%d.%m.%Y').fillna('')
         
-        date_keys = [self.TEMPLATE_KEYWORDS.get(k) for k in ["Дата видачі документа", "Дата протоколу", "Дата подачі заяви", "ДПО.Дата видачі", "Дата вступу", "Дата наказу"] if self.TEMPLATE_KEYWORDS.get(k)]
-        for key in date_keys:
-            if key in df.columns: df[key] = format_date_col(key)
-
+        df["data_sv"] = format_date_col("data_sv")
+        df["data_prot"] = format_date_col("data_prot")
+        df["zayava_vid"] = format_date_col("zayava_vid")
+        df["data"] = format_date_col("data")
+        df["data_vstup"] = format_date_col("data_vstup")
+        df["data_nakaz"] = format_date_col("data_nakaz")
+        
         today = datetime.today()
-        df["d"] = today.strftime("%d"); df["m"] = format_datetime(today, "LLLL", locale='uk_UA'); df["y"] = today.strftime("%Y")
+        df["d"] = today.strftime("%d")
+        df["m"] = format_datetime(today, "LLLL", locale='uk_UA')
+        df["y"] = today.strftime("%Y")
 
+        if self.ui.include_scores_checkbox.isChecked():
+            for score_map in self.score_mappings:
+                col = score_map['source']
+                if col in source_df.columns:
+                    numeric_scores = pd.to_numeric(source_df[col], errors='coerce')
+                    # Add numeric value
+                    df[score_map['key']] = numeric_scores.fillna('')
+                    # Add written value if requested
+                    if score_map['add_written']:
+                        df[score_map['written_key']] = numeric_scores.apply(
+                            lambda x: num2words(x, lang='uk') if pd.notnull(x) else ''
+                        )
+                else:
+                    self._log(f"Увага: колонка з оцінками '{col}' не знайдена в даних.", 'WARNING')
         return df
 
     def _create_documents(self, df, selected_templates, output_dir):
-        # Convert all final columns to string for docxtpl compatibility
-        df = df.astype(str).fillna('')
-        
+        df = df.fillna('')
         for idx, row in df.iterrows():
             context = row.to_dict()
-            name1_key = self.TEMPLATE_KEYWORDS.get("Прізвище", "name1")
-            name2_key = self.TEMPLATE_KEYWORDS.get("Ім'я", "name2")
-            name3_key = self.TEMPLATE_KEYWORDS.get("По батькові", "name3")
-            
-            name1 = str(context.get(name1_key, f"студент{idx}"))
-            name2 = str(context.get(name2_key, ""))
-            name3 = str(context.get(name3_key, ""))
+            name1 = str(context.get("name1", f"студент{idx}"))
+            name2 = str(context.get("name2", ""))
+            name3 = str(context.get("name3", ""))
             file_name_base = f"{name1} {name2} {name3}".strip().replace("  ", " ")
-            
             for template_name in selected_templates:
                 template_path = self.template_paths.get(template_name)
-                if not template_path or not template_path.exists(): continue
-                
-                template_keys = self._extract_template_keywords(template_path)
-                final_context = context.copy()
-                for key in template_keys:
-                    if key not in final_context: final_context[key] = ''
-
+                if not template_path or not template_path.exists():
+                    self._log(f"Шаблон '{template_name}' не знайдено: {template_path}", 'ERROR'); continue
                 try:
                     doc = DocxTemplate(template_path)
-                    doc.render(final_context)
+                    doc.render(context)
                     output_path = pathlib.Path(output_dir) / f"{template_name}_{file_name_base}.docx"
                     doc.save(output_path)
                 except Exception as e:
@@ -445,7 +306,6 @@ class Backend(QObject):
             self._log(f"Запуск генерації тестового файлу з шаблоном '{template_name}'...", 'PROCESS')
             
             test_df = pd.DataFrame([row_data])
-            # For testing, we don't handle custom keywords, just the main mappings
             processed_df = self._process_data(test_df, current_mappings)
 
             if processed_df is None or processed_df.empty:
@@ -469,3 +329,57 @@ class Backend(QObject):
         except Exception as e:
             self._log(f"Помилка під час створення тестового файлу: {e}", 'ERROR')
             QMessageBox.critical(self.ui, "Помилка", f"Під час створення тестового файлу сталася помилка: {e}")
+
+    def handle_document_preview(self, row_data, current_mappings, template_name):
+        """
+        Generates a single document in-memory, converts it to HTML, and returns the HTML.
+        Returns None on failure.
+        """
+        try:
+            self._log(f"Створення попереднього перегляду для шаблону '{template_name}'...", 'PROCESS')
+            
+            test_df = pd.DataFrame([row_data])
+            processed_df = self._process_data(test_df, current_mappings)
+
+            if processed_df is None or processed_df.empty:
+                self._log("Не вдалося обробити дані для попереднього перегляду.", 'ERROR')
+                return None
+
+            context = processed_df.iloc[0].to_dict()
+            template_path = self.template_paths.get(template_name)
+
+            if not template_path or not template_path.exists():
+                self._log(f"Шаблон '{template_name}' не знайдено.", 'ERROR')
+                return None
+
+            doc = DocxTemplate(template_path)
+            doc.render(context)
+            
+            # Save the document to an in-memory stream
+            doc_stream = io.BytesIO()
+            doc.save(doc_stream)
+            doc_stream.seek(0) # Rewind the stream to the beginning
+
+            # Convert the in-memory document to HTML
+            # This preserves as much formatting as mammoth can convert to inline CSS
+            result = mammoth.convert_to_html(doc_stream)
+            html = result.value # The generated HTML
+
+            # --- KEY CHANGE: Make existing placeholders interactive ---
+            # Wrap each placeholder in a styled <a> tag to make it clickable
+            for key in self.TEMPLATE_KEYWORDS.values():
+                placeholder = f"{{{key}}}"
+                # Style the link to make it visible but not distracting
+                # The href attribute will be used to identify the clicked keyword
+                interactive_placeholder = (
+                    f'<a href="placeholder:{key}" style="text-decoration: none; color: inherit; '
+                    f'font-weight: bold; background-color: rgba(52, 152, 219, 0.2); border-radius: 2px; padding: 0 2px;">{placeholder}</a>'
+                )
+                html = html.replace(placeholder, interactive_placeholder)
+
+            return html
+
+        except Exception as e:
+            self._log(f"Помилка під час створення попереднього перегляду: {e}", 'ERROR')
+            # Do not show a QMessageBox here, as the UI will handle it.
+            return None

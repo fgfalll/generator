@@ -86,9 +86,8 @@ class ScoreMappingDialog(QDialog):
         source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.mappings_table.setItem(row_position, 0, source_item)
 
-        # --- KEY CHANGE: Removed transliteration for default key generation ---
         # Column 1: Template Key (numeric)
-        default_key = source_col.lower().replace(' ', '_').replace('.', '_')
+        default_key = translit(source_col, 'uk', reversed=True).lower().replace(' ', '_').replace('.', '_')
         key = mapping.get('key', default_key) if mapping else default_key
         self.mappings_table.setItem(row_position, 1, QTableWidgetItem(key))
 
