@@ -13,10 +13,7 @@ from babel.dates import format_datetime
 from datetime import datetime
 
 from ui import MainWindow
-from column_mapper import ColumnMappingDialog
 from score_mapper_dialog import ScoreMappingDialog
-from settings_dialog import SettingsDialog
-import theme_manager
 
 class Backend(QObject):
     def __init__(self, ui, app):
@@ -83,7 +80,6 @@ class Backend(QObject):
         self._log(f"Завантажено {len(self.required_columns)} стандартних ключових слів.", 'INFO')
 
     def connect_signals(self):
-        self.ui.open_settings_signal.connect(self.open_settings)
         self.ui.select_excel_file_signal.connect(self.select_excel_file)
         self.ui.sheet_changed_signal.connect(self.load_sheet_data)
         self.ui.map_columns_signal.connect(self.map_columns)
@@ -93,15 +89,8 @@ class Backend(QObject):
         self.ui.unselect_all_templates_signal.connect(self.ui.template_listbox.clearSelection)
         self.ui.configure_scores_signal.connect(self.open_score_mapping_dialog)
         self.ui.generate_documents_signal.connect(self.generate_documents)
+        self.ui.data_tools_updated_signal.connect(self._on_data_tools_updated)
         self.scan_and_categorize_templates()
-
-    def open_settings(self):
-        current_settings = theme_manager.load_settings()
-        dialog = SettingsDialog(current_settings["theme_name"], current_settings["custom_colors"], self.ui)
-        if dialog.exec():
-            new_settings = dialog.get_settings()
-            theme_manager.save_settings(new_settings["theme_name"], new_settings["custom_colors"])
-            self.app.setStyleSheet(theme_manager.generate_qss(new_settings["theme_name"], new_settings["custom_colors"]))
 
     def scan_and_categorize_templates(self):
         self.template_paths.clear()
@@ -139,7 +128,7 @@ class Backend(QObject):
         except Exception as e: self._log(f"Не вдалося скопіювати {source_path.name}: {e}", 'ERROR')
     
     def select_excel_file(self):
-        file, _ = QFileDialog.getOpenFileName(self.ui, "Вибір Excel файлу", str(pathlib.Path.home()), "Excel Files (*.xlsx)")
+        file, _ = QFileDialog.getOpenFileName(self.ui, "Вибір Excel файлу", str(pathlib.Path.home() / 'Desktop'), "Excel Files (*.xlsx)")
         if not file: return
         try:
             self.excel_path = file
@@ -171,18 +160,22 @@ class Backend(QObject):
 
         columns_to_show = missing_columns if missing_columns else self.required_columns
         current_mappings = {col: col for col in columns_to_show if col in self.df.columns}
-        dialog = ColumnMappingDialog(self.df, columns_to_show, current_mappings, self, self.ui)
-        
-        if dialog.exec():
-            mappings = dialog.get_mapped_columns()
-            self.df = dialog.get_modified_df()
-            rename_dict = {v: k for k, v in mappings.items() if k != v and v in self.df.columns}
-            if rename_dict:
-                self.df.rename(columns=rename_dict, inplace=True)
-                self._log(f"Перейменовано {len(rename_dict)} колонок.", 'INFO')
-            self.ui.update_preview_table(self.df)
-            return True
-        return False
+
+        # Show the integrated data tools panel instead of modal dialog
+        try:
+            self.ui.show_data_tools_panel(self.df, columns_to_show, current_mappings)
+            self._log("Відкрито панель інструментів даних.", 'INFO')
+        except Exception as e:
+            self._log(f"Помилка відкриття панелі: {e}", 'ERROR')
+            import traceback
+            traceback.print_exc()
+        return True
+
+    def _on_data_tools_updated(self, df):
+        """Handle data updates from the integrated data tools panel"""
+        if df is not None:
+            self.df = df
+            self._log(f"Дані оновлено. Записів: {len(self.df)}", 'INFO')
 
     def open_score_mapping_dialog(self):
         if self.df is None or self.df.empty: return
