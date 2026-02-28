@@ -24,8 +24,24 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = global_exception_handler
 
+import os
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 if __name__ == "__main__":
+    from PyQt6.QtGui import QIcon
     app = QApplication(sys.argv)
+    
+    # Set global application icon
+    app_icon = QIcon(resource_path("icon.ico"))
+    app.setWindowIcon(app_icon)
 
     main_window = MainWindow()
     backend_logic = Backend(ui=main_window, app=app)

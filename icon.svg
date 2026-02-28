@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3c72" />
+      <stop offset="100%" stop-color="#2a5298" />
+    </linearGradient>
+    <linearGradient id="foldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#e0e0e0" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00b4db" />
+      <stop offset="100%" stop-color="#0083b0" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="15" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Base Document -->
+  <path d="M 110 50 L 310 50 L 410 150 L 410 460 C 410 476.5 396.5 490 380 490 L 140 490 C 123.5 490 110 476.5 110 460 Z" fill="url(#bgGrad)" filter="url(#shadow)" />
+  
+  <!-- Folded Corner -->
+  <path d="M 310 50 L 310 130 C 310 141 319 150 330 150 L 410 150 Z" fill="url(#foldGrad)" filter="url(#shadow)" />
+  
+  <!-- Document Lines (Data representation) -->
+  <rect x="160" y="180" width="180" height="20" rx="10" fill="#ffffff" opacity="0.9" />
+  <rect x="160" y="230" width="200" height="20" rx="10" fill="#ffffff" opacity="0.75" />
+  <rect x="160" y="280" width="140" height="20" rx="10" fill="#ffffff" opacity="0.6" />
+  
+  <!-- Excel / Data Table Accent -->
+  <rect x="160" y="340" width="70" height="70" rx="12" fill="#217346" />
+  <rect x="175" y="355" width="18" height="18" rx="4" fill="#ffffff" opacity="0.9" />
+  <rect x="198" y="355" width="18" height="18" rx="4" fill="#ffffff" opacity="0.9" />
+  <rect x="175" y="378" width="18" height="18" rx="4" fill="#ffffff" opacity="0.9" />
+  <rect x="198" y="378" width="18" height="18" rx="4" fill="#ffffff" opacity="0.9" />
+
+  <!-- Process Gears / Gen Magic Accent -->
+  <circle cx="310" cy="375" r="40" fill="url(#accentGrad)" filter="url(#shadow)"/>
+  <path d="M 310 345 L 318 360 L 335 363 L 325 375 L 330 392 L 310 385 L 290 392 L 295 375 L 285 363 L 302 360 Z" fill="#ffffff" />
+  <circle cx="310" cy="375" r="10" fill="url(#accentGrad)" />
+
+</svg>
