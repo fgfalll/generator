@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-                             QListWidget, QComboBox, QTableWidget, QTableWidgetItem, QCheckBox,
+                             QTreeWidget, QTreeWidgetItem, QComboBox, QTableWidget, QTableWidgetItem, QCheckBox,
                              QFileDialog, QDialog, QDialogButtonBox, QTextEdit,
                              QGroupBox, QTabWidget, QAbstractItemView, QHeaderView, QScrollArea,
                              QFormLayout, QGridLayout, QLineEdit, QMessageBox, QFrame, QLayout, QSpacerItem)
@@ -9,6 +9,46 @@ from datetime import datetime
 import qtawesome as qta
 import pandas as pd
 
+class CsvImportDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Налаштування імпорту CSV")
+        self.setMinimumWidth(320)
+        
+        layout = QFormLayout(self)
+        
+        self.sep_combo = QComboBox()
+        self.sep_combo.addItems(["Автовизначення", "Кома (,)", "Крапка з комою (;)", "Табуляція (\\t)", "Пробіл"])
+        
+        self.enc_combo = QComboBox()
+        self.enc_combo.addItems(["Автовизначення", "utf-8", "utf-8-sig", "windows-1251", "cp866", "latin1"])
+        
+        layout.addRow("Роздільник:", self.sep_combo)
+        layout.addRow("Кодування:", self.enc_combo)
+        
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_box.button(QDialogButtonBox.StandardButton.Ok).setText("ОК")
+        btn_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Скасувати")
+        btn_box.accepted.connect(self.accept)
+        btn_box.rejected.connect(self.reject)
+        layout.addRow(btn_box)
+        
+    def get_settings(self):
+        sep_map = {
+            "Автовизначення": None,
+            "Кома (,)": ",",
+            "Крапка з комою (;)": ";",
+            "Табуляція (\\t)": "\t",
+            "Пробіл": " "
+        }
+        enc = self.enc_combo.currentText()
+        if enc == "Автовизначення":
+            enc = None
+            
+        return {
+            "sep": sep_map[self.sep_combo.currentText()],
+            "encoding": enc
+        }
 
 class FlowLayout(QLayout):
     """Layout that wraps items to multiple lines like a flow/text wrap"""
@@ -2059,6 +2099,14 @@ class MainWindow(QMainWindow):
     configure_scores_signal = pyqtSignal()
     generate_documents_signal = pyqtSignal()
     data_tools_updated_signal = pyqtSignal(object)  # Emits dataframe
+    open_template_signal = pyqtSignal(str)
+    open_template_dir_signal = pyqtSignal(str)
+
+    def changeEvent(self, event):
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.set_active_redacting_template("") # clear highlight when returning to app
+        super().changeEvent(event)
 
     def __init__(self):
         super().__init__()
@@ -2106,9 +2154,9 @@ class MainWindow(QMainWindow):
 
         self.source_group = QGroupBox("Крок 1: Джерело даних")
         source_layout = QVBoxLayout(self.source_group); source_layout.setSpacing(6)
-        self.select_excel_button = QPushButton(qta.icon('fa5s.file-excel', color='white'), " Виберіть Excel файл")
+        self.select_excel_button = QPushButton(qta.icon('fa5s.file-excel', color='#27ae60'), " Виберіть файл (Excel/CSV)")
         self.sheet_dropdown = QComboBox()
-        self.map_columns_button = QPushButton(qta.icon('fa5s.columns', color='white'), " Співставлення колонок")
+        self.map_columns_button = QPushButton(qta.icon('fa5s.columns', color='#1565c0'), " Співставлення колонок")
         source_layout.addWidget(self.select_excel_button)
         source_layout.addWidget(QLabel("Виберіть аркуш:"))
         source_layout.addWidget(self.sheet_dropdown)
@@ -2117,19 +2165,24 @@ class MainWindow(QMainWindow):
         
         self.template_group = QGroupBox("Крок 2: Шаблони документів")
         template_layout = QVBoxLayout(self.template_group); template_layout.setSpacing(6)
-        self.template_listbox = QListWidget(); self.template_listbox.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        
+        self.template_tree = QTreeWidget()
+        self.template_tree.setHeaderHidden(True)
+        self.template_tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.template_tree.setIndentation(16)
+        
         category_layout = QHBoxLayout()
         self.template_category_dropdown = QComboBox()
         self.refresh_templates_button = QPushButton(qta.icon('fa5s.sync-alt'), "")
         self.refresh_templates_button.setObjectName("RefreshButton")
         category_layout.addWidget(QLabel("Категорія:")); category_layout.addWidget(self.template_category_dropdown, 1); category_layout.addWidget(self.refresh_templates_button)
         template_buttons_layout = QHBoxLayout()
-        self.choose_custom_templates_button = QPushButton(qta.icon('fa5s.plus', color='white'), " Додати")
-        self.unselect_all_templates_button = QPushButton(qta.icon('fa5s.square', color='white'), " Зняти виділення")
+        self.choose_custom_templates_button = QPushButton(qta.icon('fa5s.plus', color='#27ae60'), " Додати")
+        self.unselect_all_templates_button = QPushButton(qta.icon('fa5s.square', color='#7f8c8d'), " Зняти виділення")
         template_buttons_layout.addWidget(self.choose_custom_templates_button)
         template_buttons_layout.addWidget(self.unselect_all_templates_button)
         template_layout.addLayout(category_layout)
-        template_layout.addWidget(self.template_listbox)
+        template_layout.addWidget(self.template_tree)
         template_layout.addLayout(template_buttons_layout)
         left_layout.addWidget(self.template_group)
 
@@ -2137,7 +2190,7 @@ class MainWindow(QMainWindow):
         settings_layout = QVBoxLayout(self.settings_group); settings_layout.setSpacing(8)
         
         self.include_scores_checkbox = QCheckBox("Додати бали з таблиці")
-        self.configure_scores_button = QPushButton(qta.icon('fa5s.cog', color='white'), " Налаштувати колонки балів")
+        self.configure_scores_button = QPushButton(qta.icon('fa5s.cog', color='#8e44ad'), " Налаштувати колонки балів")
         
         self.configured_scores_table = QTableWidget()
         self.configured_scores_table.setColumnCount(3)
@@ -2149,7 +2202,7 @@ class MainWindow(QMainWindow):
         self.configured_scores_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.configured_scores_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         
-        self.generate_button = QPushButton(qta.icon('fa5s.cogs', color='white'), " Створити документи"); self.generate_button.setObjectName("GenerateButton")
+        self.generate_button = QPushButton(qta.icon('fa5s.cogs', color='#217346'), " Створити документи"); self.generate_button.setObjectName("GenerateButton")
         
         settings_layout.addWidget(self.include_scores_checkbox)
         settings_layout.addWidget(self.configure_scores_button)
@@ -2173,7 +2226,10 @@ class MainWindow(QMainWindow):
         self.refresh_templates_button.clicked.connect(self.refresh_templates_signal.emit)
         self.template_category_dropdown.currentTextChanged.connect(self.template_category_changed_signal.emit)
         self.choose_custom_templates_button.clicked.connect(self.choose_custom_templates_signal.emit)
-        self.unselect_all_templates_button.clicked.connect(self.unselect_all_templates_signal.emit)
+        self.unselect_all_templates_button.clicked.connect(self.template_tree.clearSelection)
+        
+        self.template_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.template_tree.customContextMenuRequested.connect(self._on_template_context_menu)
         self.include_scores_checkbox.toggled.connect(self.configure_scores_button.setEnabled)
         self.configure_scores_button.clicked.connect(self.configure_scores_signal.emit)
         self.generate_button.clicked.connect(self.generate_documents_signal.emit)
@@ -2181,6 +2237,52 @@ class MainWindow(QMainWindow):
     def show_add_templates_dialog(self):
         dialog = AddTemplatesDialog(self)
         return dialog.choice if dialog.exec() else None
+
+    def _on_template_context_menu(self, pos):
+        item = self.template_tree.itemAt(pos)
+        if not item: return
+        path_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not path_data: return # It's a folder, no context menu
+        
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction
+        import qtawesome as qta
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background: white; border: 1px solid #d0d0d0; } QMenu::item { padding: 4px 20px; }")
+        
+        open_act = QAction(qta.icon('fa5s.external-link-alt', color='#217346'), " Відкрити/Редагувати шаблон", self)
+        open_act.triggered.connect(lambda: self.open_template_signal.emit(path_data))
+        menu.addAction(open_act)
+        
+        dir_act = QAction(qta.icon('fa5s.folder-open', color='#e67e22'), " Відкрити папку з шаблоном", self)
+        dir_act.triggered.connect(lambda: self.open_template_dir_signal.emit(path_data))
+        menu.addAction(dir_act)
+        
+        menu.exec(self.template_tree.viewport().mapToGlobal(pos))
+        
+    def set_active_redacting_template(self, template_name: str):
+        """Highlight the currently editing template in the tree."""
+        if not template_name:
+            # Quick clear for all
+            self.template_tree.clearSelection() # just in case, but usually we just want to reset icons/bg
+        from PyQt6.QtGui import QColor
+        
+        def traverse(node):
+            for i in range(node.childCount()):
+                item = node.child(i)
+                path_data = item.data(0, Qt.ItemDataRole.UserRole)
+                if path_data:
+                    if path_data == template_name:
+                        item.setBackground(0, QColor('#fff3cd'))
+                        item.setForeground(0, QColor('#856404'))
+                        item.setIcon(0, qta.icon('fa5s.edit', color='#856404'))
+                    else:
+                        item.setBackground(0, Qt.GlobalColor.transparent)
+                        item.setForeground(0, Qt.GlobalColor.black)
+                        item.setIcon(0, qta.icon('fa5s.file-word', color='#217346'))
+                traverse(item)
+                
+        traverse(self.template_tree.invisibleRootItem())
     
     def log_message(self, message, level='INFO'):
         color = self.log_color_map.get(level.upper(), self.log_color_map['DEFAULT'])
@@ -2247,9 +2349,33 @@ class MainWindow(QMainWindow):
             self.configured_scores_table.setItem(row, 1, key_item)
             self.configured_scores_table.setItem(row, 2, written_key_item)
 
-    def populate_template_list(self, template_names):
-        self.template_listbox.clear()
-        self.template_listbox.addItems(template_names)
+    def populate_template_list(self, template_paths):
+        self.template_tree.clear()
+        folders = {}
+        for path_str in template_paths:
+            parts = path_str.replace('\\', '/').split('/')
+            if len(parts) == 1:
+                item = QTreeWidgetItem(self.template_tree)
+                item.setText(0, parts[0])
+                item.setIcon(0, qta.icon('fa5s.file-word', color='#217346'))
+                item.setData(0, Qt.ItemDataRole.UserRole, path_str)
+            else:
+                parent_node = self.template_tree.invisibleRootItem()
+                for i in range(len(parts)-1):
+                    folder_name = parts[i]
+                    folder_path = "/".join(parts[:i+1])
+                    if folder_path not in folders:
+                        f_item = QTreeWidgetItem(parent_node)
+                        f_item.setText(0, folder_name)
+                        f_item.setIcon(0, qta.icon('fa5s.folder', color='#e67e22'))
+                        f_item.setFlags(f_item.flags() & ~Qt.ItemFlag.ItemIsSelectable) # No select
+                        folders[folder_path] = f_item
+                    parent_node = folders[folder_path]
+                item = QTreeWidgetItem(parent_node)
+                item.setText(0, parts[-1])
+                item.setIcon(0, qta.icon('fa5s.file-word', color='#217346'))
+                item.setData(0, Qt.ItemDataRole.UserRole, path_str)
+        self.template_tree.expandAll()
 
     # === Data Tools Panel Methods ===
     def _on_data_tools_data_changed(self, df=None):

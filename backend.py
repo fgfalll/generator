@@ -86,30 +86,47 @@ class Backend(QObject):
         self.ui.refresh_templates_signal.connect(self.scan_and_categorize_templates)
         self.ui.template_category_changed_signal.connect(self.on_template_category_changed)
         self.ui.choose_custom_templates_signal.connect(self.choose_custom_templates)
-        self.ui.unselect_all_templates_signal.connect(self.ui.template_listbox.clearSelection)
+        self.ui.unselect_all_templates_signal.connect(self.ui.template_tree.clearSelection)
         self.ui.configure_scores_signal.connect(self.open_score_mapping_dialog)
         self.ui.generate_documents_signal.connect(self.generate_documents)
         self.ui.data_tools_updated_signal.connect(self._on_data_tools_updated)
+        self.ui.open_template_signal.connect(self.open_template)
+        self.ui.open_template_dir_signal.connect(self.open_template_dir)
         self.scan_and_categorize_templates()
 
     def scan_and_categorize_templates(self):
+        self.ui.set_active_redacting_template("") # clear active highlight on refresh
         self.template_paths.clear()
         self.categorized_templates = {cat: [] for cat in self.CATEGORY_KEYWORDS.keys()}
         self.categorized_templates[self.DEFAULT_CATEGORY] = []
         for path in self.example_dir.rglob("*.docx"):
-            if not path.is_file(): continue
-            stem, assigned = path.stem, False
-            self.template_paths[stem] = path
+            if not path.is_file() or path.name.startswith("~$"): continue
+            
+            try:
+                rel_path = path.relative_to(self.example_dir)
+            except ValueError:
+                rel_path = path
+
+            rel_path_str = str(rel_path).replace('\\', '/')
+            self.template_paths[rel_path_str] = path
+            
+            stem = path.stem
+            assigned = False
             for category, keywords in self.CATEGORY_KEYWORDS.items():
                 if any(keyword in stem.lower() for keyword in keywords):
-                    self.categorized_templates[category].append(stem)
+                    self.categorized_templates[category].append(rel_path_str)
                     assigned = True; break
-            if not assigned: self.categorized_templates[self.DEFAULT_CATEGORY].append(stem)
+            if not assigned: self.categorized_templates[self.DEFAULT_CATEGORY].append(rel_path_str)
+            
         self.categorized_templates = {cat: tpls for cat, tpls in self.categorized_templates.items() if tpls}
         self.ui.update_template_categories_dropdown(list(self.categorized_templates.keys()))
 
     def on_template_category_changed(self, category_name):
-        self.ui.populate_template_list(sorted(self.categorized_templates.get(category_name, [])))
+        def natural_keys(text):
+            return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+            
+        tpls = self.categorized_templates.get(category_name, [])
+        self.ui.populate_template_list(sorted(tpls, key=natural_keys))
 
     def choose_custom_templates(self):
         choice = self.ui.show_add_templates_dialog()
@@ -118,27 +135,77 @@ class Backend(QObject):
             if files: [self._copy_template(pathlib.Path(f)) for f in files]
         elif choice == 'folder':
             folder = QFileDialog.getExistingDirectory(self.ui, "Виберіть папку для сканування")
-            if folder: [self._copy_template(f) for f in pathlib.Path(folder).rglob("*.docx")]
+            if folder:
+                root_path = pathlib.Path(folder)
+                for f in root_path.rglob("*.docx"):
+                    if f.is_file() and not f.name.startswith("~$"):
+                        self._copy_template(f, base_folder=root_path)
         if choice: self.scan_and_categorize_templates()
 
-    def _copy_template(self, source_path):
+    def _copy_template(self, source_path, base_folder=None):
         try:
-            shutil.copyfile(source_path, self.example_dir / source_path.name)
-            self._log(f"Імпортовано шаблон: {source_path.name}", 'INFO')
-        except Exception as e: self._log(f"Не вдалося скопіювати {source_path.name}: {e}", 'ERROR')
+            if base_folder:
+                # Keep folder structure relative to the chosen folder
+                rel = source_path.relative_to(base_folder)
+                # To prevent creating a messy root, we can optionally wrap it in the root folder's name,
+                # but let's just use the relative path for now
+                dest = self.example_dir / base_folder.name / rel
+            else:
+                # Flat copy for single files
+                dest = self.example_dir / source_path.name
+                
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, dest)
+            self._log(f"Імпортовано шаблон: {dest.relative_to(self.example_dir)}", 'INFO')
+        except Exception as e:
+            self._log(f"Не вдалося скопіювати {source_path.name}: {e}", 'ERROR')
+
+    def open_template(self, template_name):
+        import os
+        template_path = self.template_paths.get(template_name)
+        if template_path and template_path.exists():
+            try:
+                os.startfile(template_path)
+                self.ui.set_active_redacting_template(template_name)
+                self._log(f"Відкрито шаблон для редагування: {template_name}", 'INFO')
+            except Exception as e:
+                self._log(f"Не вдалося відкрити шаблон {template_name}: {e}", 'ERROR')
+                
+    def open_template_dir(self, template_name):
+        import os
+        template_path = self.template_paths.get(template_name)
+        if template_path and template_path.exists():
+            try:
+                # Open the parent folder
+                os.startfile(template_path.parent)
+                self._log(f"Відкрито папку шаблону: {template_name}", 'INFO')
+            except Exception as e:
+                self._log(f"Не вдалося відкрити папку {template_name}: {e}", 'ERROR')
     
     def select_excel_file(self):
-        file, _ = QFileDialog.getOpenFileName(self.ui, "Вибір Excel файлу", str(pathlib.Path.home() / 'Desktop'), "Excel Files (*.xlsx)")
+        file, _ = QFileDialog.getOpenFileName(self.ui, "Вибір файлу", str(pathlib.Path.home() / 'Desktop'), "Data Files (*.xlsx *.xls *.csv);;Excel Files (*.xlsx *.xls);;CSV Files (*.csv)")
         if not file: return
         try:
             self.excel_path = file
-            sheet_names = pd.ExcelFile(self.excel_path).sheet_names
+            self.csv_settings = None # Reset settings
+
+            if self.excel_path.lower().endswith('.csv'):
+                from ui import CsvImportDialog
+                dialog = CsvImportDialog(self.ui)
+                if dialog.exec():
+                    self.csv_settings = dialog.get_settings()
+                else:
+                    return # Cancelled import
+                sheet_names = ["Дані CSV"]
+            else:
+                sheet_names = pd.ExcelFile(self.excel_path).sheet_names
+                
             self.ui.update_sheet_dropdown(sheet_names)
             self.ui.set_file_loaded_state(True)
             if sheet_names: self.ui.sheet_dropdown.setCurrentText(sheet_names[0])
-            self._log(f"Вибраний Excel файл: {self.excel_path}", 'INFO')
+            self._log(f"Вибраний файл: {self.excel_path}", 'INFO')
         except Exception as e:
-            self._log(f"Помилка читання Excel файлу: {e}", 'ERROR')
+            self._log(f"Помилка читання файлу: {e}", 'ERROR')
 
     def load_sheet_data(self, sheet_name):
         if not self.excel_path or not sheet_name or sheet_name == "...":
@@ -146,14 +213,46 @@ class Backend(QObject):
             self.ui.update_preview_table(None); self.ui.set_sheet_loaded_state(False)
             self.ui.update_configured_scores_display([]); return
         try:
-            self.df = pd.read_excel(self.excel_path, sheet_name=sheet_name, dtype=str).fillna('')
+            if self.excel_path.lower().endswith('.csv'):
+                settings = getattr(self, 'csv_settings', None) or {}
+                kwargs = {'dtype': str}
+                
+                req_sep = settings.get("sep")
+                req_enc = settings.get("encoding")
+                
+                if req_sep:
+                    kwargs['sep'] = req_sep
+                else:
+                    # Auto-detect requested
+                    kwargs['sep'] = None
+                    kwargs['engine'] = 'python'
+                    
+                if req_enc:
+                    kwargs['encoding'] = req_enc
+
+                try:
+                    self.df = pd.read_csv(self.excel_path, **kwargs).fillna('')
+                except Exception as detect_err:
+                    # If auto-detect sniffer fails, or encoding fails, fall back to safe defaults
+                    self._log(f"Автовизначення CSV не вдалося. Використовуємо стандартні налаштування... ({detect_err})", 'WARNING')
+                    # Fallback to semicolon or comma, utf-8-sig
+                    fallback_kwargs = {'dtype': str, 'sep': ';', 'encoding': 'utf-8-sig'}
+                    try:
+                        self.df = pd.read_csv(self.excel_path, **fallback_kwargs).fillna('')
+                    except:
+                        # Final attempt with comma
+                        fallback_kwargs['sep'] = ','
+                        self.df = pd.read_csv(self.excel_path, **fallback_kwargs).fillna('')
+            else:
+                self.df = pd.read_excel(self.excel_path, sheet_name=sheet_name, dtype=str).fillna('')
+                
             self.ui.update_preview_table(self.df)
             self.ui.set_sheet_loaded_state(True)
             self.score_mappings = []
             self.ui.update_configured_scores_display([])
-            self._log(f"Завантажено аркуш '{sheet_name}'.", 'INFO')
+            self._log(f"Завантажено дані '{sheet_name}'.", 'INFO')
         except Exception as e:
-            self._log(f"Помилка завантаження аркуша '{sheet_name}': {e}", 'ERROR')
+            self._log(f"Помилка завантаження '{sheet_name}': {e}", 'ERROR')
 
     def map_columns(self, missing_columns=None):
         if self.df is None or self.df.empty: return False
@@ -221,9 +320,14 @@ class Backend(QObject):
             if self.df is None or self.df.empty:
                 QMessageBox.warning(self.ui, "Немає даних", "Будь ласка, завантажте дані з файлу Excel."); return
             
-            selected_templates = [item.text() for item in self.ui.template_listbox.selectedItems()]
+            from PyQt6.QtCore import Qt
+            selected_templates = []
+            for item in self.ui.template_tree.selectedItems():
+                p_data = item.data(0, Qt.ItemDataRole.UserRole)
+                if p_data: selected_templates.append(p_data)
+                
             if not selected_templates:
-                QMessageBox.warning(self.ui, "Не вибрано шаблон", "Будь ласка, виберіть хоча б один шаблон у Кроці 2."); return
+                QMessageBox.warning(self.ui, "Не вибрано шаблон", "Будь ласка, виберіть хоча б один документ у Кроці 2."); return
 
             while True:
                 all_used_keywords = {k for name in selected_templates for k in self._extract_template_keywords(self.template_paths[name])}
@@ -318,9 +422,11 @@ class Backend(QObject):
                 try:
                     doc = DocxTemplate(template_path)
                     doc.render(final_context)
-                    doc.save(pathlib.Path(output_dir) / f"{template_name}_{file_name_base}.docx")
+                    # We only want the actual filename, not the relative directory structure when saving
+                    out_name = f"{template_path.stem}_{file_name_base}.docx"
+                    doc.save(pathlib.Path(output_dir) / out_name)
                 except Exception as e:
-                    self._log(f"Помилка генерації для {file_name_base} з {template_name}: {e}", 'ERROR')
+                    self._log(f"Помилка генерації для {file_name_base} з {template_path.stem}: {e}", 'ERROR')
 
     def handle_test_file_generation(self, row_data, current_mappings, template_name):
         try:
